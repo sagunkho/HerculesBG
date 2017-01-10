@@ -1,0 +1,578 @@
+/**
+ * Hercules Script
+ *
+ * Feature: hBattleground
+ * Version: 1.0
+ * Author: Smokexyz
+ *
+ * Description: Hercules Battlegrounds plugin.
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/**
+ * Map Flags
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+bat_room	mapflag	nomemo
+bat_room	mapflag	nowarpto
+bat_room	mapflag	nobranch
+bat_room	mapflag	nopenalty
+bat_room	mapflag	noteleport
+bat_room	mapflag	nosave	SavePoint
+// This mapflag is required to join battleground queues.
+bat_room	mapflag	town
+
+/**
+ * Battleground Queue Handler
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+-	script	BG_Queue_Handler	-1,{
+	end;
+
+OnInit:
+	// Arena Configuration
+	// All Arena settings are listed below, newer ones can be appended to the arrays.
+	// Arenas when listed will be available in the auto-rotation.
+	setarray .BG_Arenas$[0],       "Flavius_CTF",    "Tierra_EOS",   "Tierra_TI",     "Flavius_TD", "Tierra_Boss","Conquest",    "Flavius_SC",  "Tierra_DOM",   "Rush";
+	// Battleground Arena Name for announcements.
+	setarray .BG_Names$[0],      "Capture the Flag","Eye of Storm","Triple Inferno","Team DeathMatch","Bossnia",  "Conquest",   "Stone Control","Domination",   "Rush";
+	// Minimum Players required to start the Battleground.
+	setarray .BG_Players_Min[0],        1,               1,                1,              1,            1,           5,             1,             1,            1;
+	// Maximum Players per Team
+	setarray .BG_Players_Max[0],        35,              35,               35,             35,           35,          50,            35,            35,           30;
+	// Battleground announcement colors.
+	setarray .BG_Color$[0],        "0x2F9F2D",       "0xAA00FF",        "0xFF0033",    "0x33FF99",   "0x3399FF",  "0xFFA500",    "0x9ACD32",    "0x4169E1",   "0xDDA0DD";
+
+	// Team Building Mode : 0 = Lineal, 1 = Random, 2 = Balanced
+	set .TeamBuildingMode, 1;
+
+	// Battleground @commands (@joinbg, @leavebg).
+	set .BGCommandsEnabled, 1; // (1 to enable, 0 to disable)
+
+	// Minimum Level to join the BG queue.
+	set .BGQueue_Level_Min, 80;
+
+	/* * * * * DO NOT TOUCH ANYTHING BELOW THIS LINE * * * * * * * * * * * * * * * */
+	set .TotalArenas, getarraysize(.BG_Arenas$);
+	set .BG_Queue, hBG_queue_create("Battleground Arena","BG_Queue_Handler::OnQueueJoinEvent",.BGQueue_Level_Min);
+	set .FFA_Queue, hBG_queue_create("Free For All Arena","BG_Queue_Handler::OnFFAQueueJoinEvent",.BGQueue_Level_Min);
+
+	// Move to Next Arena
+	if ($BG_Index >= .TotalArenas)
+		set $BG_Index,0; // Restart Rotation
+
+	set .BG_Arena$,.BG_Arenas$[$BG_Index];
+	set .Ready, 1;
+	initnpctimer; // Initiate rotation timer.
+
+	if (.BGCommandsEnabled) {
+		bindatcmd "joinbg","BG_Queue_Handler::OnDoJoin",0,99;
+		bindatcmd "leavebg","BG_Queue_Handler::OnDoLeave",0,99;
+	}
+	end;
+
+// @joinbg
+OnDoJoin:
+	if (questprogress(8506,PLAYTIME) == 2)
+		erasequest 8506;
+
+	if (questprogress(8506,PLAYTIME) == 1) {
+		dispbottom "[You are a Deserter. You can't participate until the indicator goes off]";
+		end;
+	}
+
+	hBG_queue_join .BG_Queue;
+	end;
+
+// @leavebg
+OnDoLeave:
+	hBG_queue_leave .BG_Queue;
+	end;
+
+OnEndArena:
+	set $@Arena_Status, 0;
+	// Warps teams back to the battle room.
+	bg_warp $@BG_Team1,"bat_room",155,150;
+	bg_warp $@BG_Team2,"bat_room",155,150;
+	bg_warp $@BG_Team3,"bat_room",155,150;
+	// Destroy Teams
+	hBG_destroy $@BG_Team1; set $@BG_Team1, 0;
+	hBG_destroy $@BG_Team2; set $@BG_Team2, 0;
+	hBG_destroy $@BG_Team3; set $@BG_Team3, 0;
+	// Fall through
+// Start Arena rotation.
+OnRotate:
+// Rotate every 120 seconds.
+OnTimer5000:
+	// Restart from index 0, if reached max.
+	if (set($BG_Index,$BG_Index + 1) >= .TotalArenas)
+		set $BG_Index,0;
+
+	set .BG_Arena$,.BG_Arenas$[$BG_Index];
+	initnpctimer;
+	// Fall through
+// Called every time someone joins the Queue.
+OnQueueJoinEvent:
+	// BG Status Types -
+	// 0 - Idle, ready to start.
+	// 1 - Running, others can join.
+	// 2 - Ending, BG Clear-up mode.
+	if ($@Arena_Status == 2)
+		end;
+
+	set .@Queue_Count, hBG_queue_data(.BG_Queue,0);
+	switch($@Arena_Status) {
+	case 0: // Idle, ready to start.
+		// Set total Arena teams
+		if (.BG_Arena$ == "Tierra_TI")
+			set .@TotalTeams, 3;
+		else
+			set .@TotalTeams, 2;
+
+		// Set total minimum Arena players.
+		set .@Req, .BG_Players_Min[$BG_Index] * .@TotalTeams;
+
+		// Check if the required number of players have been reached, and process.
+		if (.@Queue_Count >= .@Req) {
+			donpcevent .BG_Arena$ + "::OnBuildTeams";
+
+			// Fill Teams with Queue Members
+			if (.@TotalTeams == 3)
+				hBG_queue2teams .BG_Queue,.BG_Players_Min[$BG_Index],.BG_Players_Max[$BG_Index],.TeamBuildingMode,$@BG_Team1,$@BG_Team2,$@BG_Team3;
+			else
+				hBG_queue2teams .BG_Queue,.BG_Players_Min[$BG_Index],.BG_Players_Max[$BG_Index],.TeamBuildingMode,$@BG_Team1,$@BG_Team2;
+
+			// Stop Arena Rotation.
+			stopnpctimer;
+
+			// Set BG Status as Ongoing.
+			set $@Arena_Status,1;
+
+			set .@msg$, "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is commencing.";
+			announce .@msg$,0,.BG_Color$[$BG_Index],0x190,12,100,100;
+
+			// Start Battleground Events.
+			donpcevent .BG_Arena$ + "::OnReady";
+		} else { // Required players have not been reached.
+			set .@msg$, "[Battlegrounds] "+.BG_Names$[$BG_Index]+" requires "+(.@Req - .@Queue_Count)+" more player(s) to start.";
+			announce .@msg$,0,.BG_Color$[$BG_Index],0x190,12,100,100;
+		}
+		break;
+	case 1: // Running, others can join.
+		if (.@Queue_Count > 0) {
+			if (.BG_Arena$ == "Tierra_TI") {
+				hBG_balance_teams .BG_Queue,.BG_Players_Max[$BG_Index],.TeamBuildingMode,$@BG_Team1,$@BG_Team2,$@BG_Team3;
+				set .@BG_Count1, hBG_get_data($@BG_Team1,0);
+				set .@BG_Count2, hBG_get_data($@BG_Team2,0);
+				set .@BG_Count3, hBG_get_data($@BG_Team3,0);
+				set .@msg$, "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is ongoing. Blue Team: " + .@BG_Count1 + "/" + .BG_Players_Max[$BG_Index] + ", Red Team: " + .@BG_Count2 + "/" + .BG_Players_Max[$BG_Index] + ", Green Team: " + .@BG_Count3 + "/" + .BG_Players_Max[$BG_Index] + ".";
+			} else {
+				hBG_balance_teams .BG_Queue,.BG_Players_Max[$BG_Index],.TeamBuildingMode,$@BG_Team1,$@BG_Team2;
+				set .@BG_Count1, hBG_get_data($@BG_Team1,0);
+				set .@BG_Count2, hBG_get_data($@BG_Team2,0);
+				set .@msg$, "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is ongoing. Blue Team: " + .@BG_Count1 + "/" + .BG_Players_Max[$BG_Index] + ", Red Team: " + .@BG_Count2 + "/" + .BG_Players_Max[$BG_Index] + ".";
+			}
+			announce .@msg$,0,.BG_Color$[$BG_Index],0x190,12,100,100;
+		}
+	default:
+		break;
+	}
+	end;
+
+OnFFAQueueJoinEvent:
+	if ($@FFA_Arena_Status != 0)
+		end;
+
+	set .@Queue_Count, hBG_queue_data(.FFA_Queue,0);
+
+	if (.@Queue_Count >= 10) {
+		donpcevent "FFA_Arena::OnBuildTeams";
+		hBG_queue2teams .FFA_Queue,1,0,$@FFA_Team[0],$@FFA_Team[1],$@FFA_Team[2],$@FFA_Team[3],$@FFA_Team[4],$@FFA_Team[5],$@FFA_Team[6],$@FFA_Team[7],$@FFA_Team[8],$@FFA_Team[9];
+		set $@FFA_Arena_Status,1;
+		announce "[Battlegrounds] Free For All is commencing.",0,0x483D8B;
+		donpcevent "FFA_Arena::OnReady";
+	} else {
+		announce "[Battlegrounds] Free For All requires " + (10 - .@Queue_Count) + " more player(s) to start.",0,0x483D8B;
+	}
+	end;
+}
+/**
+ * Battleground Recruiter
+ */
+-	script	BG_Register	-1,{
+	set .@name$, "[^FFA500Battle Recruiter^000000]";
+	if (getvariableofnpc(.Ready,"BG_Queue_Handler") == 0)
+		donpcevent "BG_Queue_Handler::OnInit";
+
+	mes .@name$;
+	mes "Good day, adventurer.";
+	mes "I'm a knight from a far country called Maroll Kingdom.";
+	next;
+	mes .@name$;
+	mes "The two princes of the kingdom are now battling for the throne of Maroll, and are in need of experienced soldiers like you.";
+	mes "How would you like to lend your power to one of the princes in the Maroll Kingdom?";
+	next;
+	switch(select("^FFA500Battleground Arenas^000000:^0000FFFree For All Arena^000000:Warp to Battle Room"))
+	{
+	case 1:
+		mes .@name$;
+		mes "Battleground Arenas are different kinds of games where teams fight for victory.";
+		mes "What do you want to do?";
+		next;
+		switch(select("Register:Party Register:Leave Queue:Battleground Help"))
+		{
+		case 1:
+			if (BaseLevel < .BGQueue_Level_Min) {
+				mes .@name$;
+				mes "The minimum required level to join a battleground is "+.BGQueue_Level_Min+".";
+				close;
+			}
+			if (questprogress(8506,PLAYTIME) == 2)
+				erasequest 8506;
+
+			if (questprogress(8506,PLAYTIME) == 1) {
+				mes .@name$;
+				mes "You are a Deserter. You can't participate until the indicator goes off.";
+				close;
+			}
+
+			mes .@name$;
+			mes "Let's proceed with the registration...";
+			mes "You must wait in any City until BG starts.";
+			mes "Close this window to continue...";
+			close2;
+			hBG_queue_join getvariableofnpc(.BG_Queue,"BG_Queue_Handler");
+			end;
+		case 2:
+			if (getcharid(1) == 0) {
+				mes .@name$;
+				mes "You are not in a Party.";
+				close;
+			}
+
+			mes .@name$;
+			mes "Let's proceed with the registration,";
+			mes "You must wait in any City until the BG starts.";
+			mes "* close this window to continue *";
+			close2;
+			hBG_queue_partyjoin getcharid(1),getvariableofnpc(.BG_Queue,"BG_Queue_Handler");
+			end;
+		case 3:
+			mes .@name$;
+			mes "If you are queued, you will be removed from the Battleground queue.";
+			mes "Are you sure you want to proceed?";
+			next;
+			if (select("Yes, leave the queue.:No, I will stay queued.") == 2) {
+				mes .@name$;
+				mes "Ok, nothing to change.";
+				close;
+			}
+
+			mes .@name$;
+			mes "* close this window to continue *";
+			close2;
+			hBG_queue_leave getvariableofnpc(.BG_Queue,"BG_Queue_Handler");
+			end;
+		case 4:
+			mes .@name$;
+			mes "So which battleground would you like to learn about?";
+			next;
+			switch(select("Capture the Flag:Team Death Match:Stone Control:Eye of Storm:Bossnia:Domination:Triple Inferno:Conquest:Rush"))
+			{
+			case 1:
+				mes .@name$;
+				mes "The objective of the ^990022Flavius Battle CTF^000000 is to score 3 points before your enemy, by capturing their Flag.";
+				next;
+				mes .@name$;
+				mes "To capture a Flag you need to take the Enemy Flag, and bring it to your base.";
+				next;
+				mes .@name$;
+				mes "If your base flag is captured, you need to kill the Flag carrier and take the flag back to your base.";
+				next;
+				mes .@name$;
+				mes "Also make sure to protect the Flag carrier on your team from your enemies.";
+				break;
+			case 2:
+				mes .@name$;
+				mes "Both teams start with 100 points.";
+				mes "Killing a player costs the team 1 point.";
+				mes "Kill all the enemy players to reduce their points until they have none.";
+				mes "Protect our army!";
+				break;
+			case 3:
+				mes .@name$;
+				mes "Take the stones in the middle of the battlefield and place them at your base.";
+				next;
+				mes .@name$;
+				mes "Each stone will give points to your team over time. First team to reach 99 points wins the game.";
+				next;
+				mes .@name$;
+				mes "Team Stones can also be captured by the enemy team, so protect them well!";
+				break;
+			case 4:
+				mes .@name$;
+				mes "There are two bases, located towards the North and South, which teams can capture by holding their position for longer than their opposition.";
+				next;
+				mes .@name$;
+				mes "Each base will give you points every 5 seconds. If your team controls both bases, the amount of points drastically increases.";
+				next;
+				mes .@name$;
+				mes "To get aditional points, capture a flag that spawns in the middle of the map and put it on any of your team Bases.";
+				next;
+				mes .@name$;
+				mes "The first team to reach 99 points wins the match.";
+				break;
+			case 5:
+				mes .@name$;
+				mes "Attack the enemy base and destroy each MVP Guardian. To do damage to the guardian your team must capture the Balance Flag in the middle base.";
+				next;
+				mes .@name$;
+				mes "Each team has 5 guardians in total, to be protected or killed.";
+				break;
+			case 6:
+				mes .@name$;
+				mes "There are three bases, North, Center and South which teams can capture by holding their position on them.";
+				next;
+				mes .@name$;
+				mes "Each base will give you points for every 5 seconds of domination.";
+				next;
+				mes .@name$;
+				mes "The first team to reach 99 points wins the match.";
+				break;
+			case 7:
+				mes .@name$;
+				mes "There are 3 teams in this Arena, all enemies of each other.";
+				next;
+				mes .@name$;
+				mes "Kill the enemy players, collect their skulls and bring them to the Sacrifice Totem to win points.";
+				next;
+				mes .@name$;
+				mes "You can collect your own team skulls and bring them to your Sacrifice Totem to avoid other teams to score.";
+				next;
+				mes .@name$;
+				mes "If you get killed, all your skulls will be dropped on to the floor, including your own skull. First Team to get 80 points wins the battle.";
+				break;
+			case 8:
+				mes .@name$;
+				mes "In the Conquest arena,";
+				mes "If you are Attacking, destroy the enemy's defenses and their flag.";
+				mes "If you are Defending, protect your castle defenses and your flag.";
+				break;
+			case 9:
+				mes .@name$;
+				mes "In the Rush arena,";
+				mes "Fight to capture the Castle and organize your team to defend it.";
+				mes "If you fail on the first capture, kill the defender and take it for your team.";
+				break;
+			}
+			break;
+		}
+		close;
+	case 2:
+		mes .@name$;
+		mes "The Free For All arena is a killfest between 10 players. There are no teams.";
+		mes "The first player to reach 25 kills wins.";
+		mes "What would you like to do?";
+		next;
+		switch(select("Register for FFA Arena:Leave the Queue:Cancel")) {
+		case 1:
+			if (BaseLevel < .BGQueue_Level_Min) {
+				mes .@name$;
+				mes "Minimum required level to join a battleground is "+.BGQueue_Level_Min+".";
+				close;
+			}
+			if (questprogress(8506,PLAYTIME) == 2)
+				erasequest 8506;
+
+			if (questprogress(8506,PLAYTIME) == 1) {
+				mes .@name$;
+				mes "You are a deserter. You can't participate until the indicator goes off.";
+				close;
+			}
+
+			mes .@name$;
+			mes "Let's proceed with the registration...";
+			mes "You must wait in any city until BG starts.";
+			mes "* close this window to continue *";
+			close2;
+			hBG_queue_join getvariableofnpc(.FFA_Queue,"BG_Queue_Handler");
+			end;
+		case 2:
+			mes .@name$;
+			mes "If you are registered, you will be removed.";
+			mes "Are you sure?";
+			next;
+			if (select("Yes, leave queue:No, I will stay") == 2)
+			{
+				mes .@name$;
+				mes "Ok, nothing to change.";
+				close;
+			}
+
+			mes .@name$;
+			mes "* close this window to continue *";
+			close2;
+			hBG_queue_leave getvariableofnpc(.FFA_Queue,"BG_Queue_Handler");
+			end;
+		case 3:
+			close2;
+		}
+		break;
+	case 3:
+		mes .@name$;
+		mes "May the blessings of the war Gods be with you.";
+		close2;
+		warp "bat_room",155,150;
+		end;
+	}
+	end;
+}
+
+bat_room,161,154,3	duplicate(BG_Register)	Battle Recruiter#bat	4_F_JOB_KNIGHT
+prontera,158,192,4	duplicate(BG_Register)	Battle Recruiter#prt	4_F_JOB_KNIGHT
+comodo,173,143,4	duplicate(BG_Register)	Battle Recruiter#cmd	4_F_JOB_KNIGHT
+dewata,210,167,4	duplicate(BG_Register)	Battle Recruiter#dew	4_F_JOB_KNIGHT
+morocc,172,87,1	duplicate(BG_Register)	Battle Recruiter#moc	4_F_JOB_KNIGHT
+geffen,136,56,3	duplicate(BG_Register)	Battle Recruiter#gef	4_F_JOB_KNIGHT
+payon,147,80,6	duplicate(BG_Register)	Battle Recruiter#pay	4_F_JOB_KNIGHT
+alberta,201,120,3	duplicate(BG_Register)	Battle Recruiter#alb	4_F_JOB_KNIGHT
+aldebaran,153,108,5	duplicate(BG_Register)	Battle Recruiter#ald	4_F_JOB_KNIGHT
+izlude,106,114,5	duplicate(BG_Register)	Battle Recruiter#izl	4_F_JOB_KNIGHT
+yuno,141,178,5	duplicate(BG_Register)	Battle Recruiter#yun	4_F_JOB_KNIGHT
+amatsu,192,95,5	duplicate(BG_Register)	Battle Recruiter#ama	4_F_JOB_KNIGHT
+gonryun,148,114,4	duplicate(BG_Register)	Battle Recruiter#gon	4_F_JOB_KNIGHT
+comodo,173,143,4	duplicate(BG_Register)	Battle Recruiter#comodo	4_F_JOB_KNIGHT
+louyang,237,100,4	duplicate(BG_Register)	Battle Recruiter#lou	4_F_JOB_KNIGHT
+ayothaya,153,123,4	duplicate(BG_Register)	Battle Recruiter#ayo	4_F_JOB_KNIGHT
+moc_para01,18,18,6	duplicate(BG_Register)	Battle Recruiter#para	4_F_JOB_KNIGHT
+
+/**
+ * General Guillaume
+ */
+bat_room,160,159,3	script	General Guillaume	4_M_KY_KIYOM,{
+	cutin "bat_kiyom2",2;
+	set .@name$, "[General Guillaume]";
+	mes .@name$;
+	mes "Hot-blooded adventurer, we need the aid of your abilities to win this battle.";
+	next;
+	cutin "bat_kiyom1",2;
+	mes .@name$;
+	mes "Our great king, Marcel Marollo VII, is very sick lately. His Majesty has declared to choose either me or Prince Croix as the next king amongst his 9 sons.";
+	next;
+	mes .@name$;
+	mes "Two kings can't share a nation!";
+	mes "Only the one victorious from his majesty's appointed battle will be enthroned.";
+	next;
+	mes .@name$;
+	mes "This is however, not just a battle between us. This battle will determine the future of this country. I pledge on my honor to prove that I'm the one who can protect this Maroll from outside threats.";
+	next;
+	mes .@name$;
+	mes "I'll be the one who will capture the flag!";
+	close2;
+	cutin "",255;
+	end;
+}
+
+/**
+ * Prince Croix
+ */
+bat_room,160,140,3	script	Prince Croix	4_M_CRU_CRUA,{
+	cutin "bat_crua1",2;
+	set .@name$, "[Prince Croix]";
+	mes .@name$;
+	mes "Wise adventurer, why don't you lend us your power for victory?";
+	next;
+	cutin "bat_crua2",2;
+	mes .@name$;
+	mes "I do not wish to shed blood, but I have no choice but to fight for the possibility of peace and for the sake of my people.";
+	next;
+	mes .@name$;
+	mes "General Guillaume may have an advantage in this battle as he is the great general of Maroll, but that doesn't automatically mean he'll win. I want to win this battle so that I can grant a better future for my people.";
+	next;
+	mes .@name$;
+	mes "For Maroll!";
+	close2;
+	cutin "",255;
+	end;
+}
+
+/**
+ * Battleground Dummy Guards
+ */
+bat_room,161,141,3	script	Prince Croix's Aid::bat_aid	4_M_CRU_HEAD,{ end; }
+bat_room,161,139,3	duplicate(bat_aid)	Prince Croix's Aid::bat_aid2	4_M_CRU_HEAD
+bat_room,161,160,3	duplicate(bat_aid)	General Guillaume's Aid::bat_aid3	4_M_KY_HEAD
+bat_room,161,158,3	duplicate(bat_aid)	General Guillaume's Aid::bat_aid4	4_M_KY_HEAD
+
+/**
+ * Battleground Flags
+ */
+-	script	Guillaume camp#bat	1_FLAG_LION,{ end; }
+-	script	Croix camp#bat	1_FLAG_EAGLE,{ end; }
+
+/**
+ *  Battleground Exit Teleporter
+ */
+bat_room,148,150,4	script	Teleporter#bat	4_F_TELEPORTER,{
+	set .@name$, "[Teleporter]";
+	mes .@name$;
+	mes "Do you wish to leave the battlefield? Use my service to return to town.";
+	next;
+	if (select("I wish to leave.:I wish to stay.") == 2) {
+		mes .@name$;
+		mes "I'll be here whenever you're in need of my service.";
+		close;
+	}
+
+	switch(@ArenaPVP_out) {
+		// Rune Midgard Republic
+		case 1: warp "prontera",149,92; break;
+		case 2: warp "payon",165,98; break;
+		case 3: warp "morocc",153,94; break;
+		case 4: warp "umbala",121,143; break;
+		case 5: warp "comodo",196,140; break;
+		case 6: warp "niflheim",214,193; break;
+		case 7: warp "aldebaran",143,111; break;
+		case 8: warp "geffen",107,53; break;
+		// Schwarzard Republic
+		case 9: warp "yuno",151,177; break;
+		case 10: warp "hugel",99,143; break;
+		case 11: warp "lighthalzen",167,93; break;
+		case 12: warp "einbroch",70,194; break;
+		case 13: warp "einbech",168,130; break;
+		// Arunafelz Republic
+		case 14: warp "rachel",118,114; break;
+		case 15: warp "veins",207,122; break;
+		// Islands
+		case 16: warp "nameless_n",161,179; break;
+		case 17: warp "louyang",213,106; break;
+		case 18: warp "gonryun",154,111; break;
+		case 19: warp "ayothaya",148,109; break;
+		case 20: warp "moscovia",229,195; break;
+		case 21: warp "xmas",151,127; break;
+		case 22: warp "amatsu",203,107; break;
+		case 23: warp "izlude",126,114; break;
+		case 24: warp "brasilis",195,211; break;
+		case 25: warp "manuk",279,214; break;
+		case 26: warp "splendide",200,174; break;
+		// Anyplace else
+		default:
+			set .@spoint$, getsavepoint(0);
+			set .@x, getsavepoint(1);
+			set .@y, getsavepoint(2);
+			mes .@name$;
+			mes "You will be sent back to " + .@spoint$ + ".";
+			close2;
+			warp .@spoint$, .@x, .@y;
+			break;
+	}
+
+	set @ArenaPVP_out, 0;
+	end;
+}
+
+/**
+ * Battleground Kafra Staff
+ */
+bat_room,148,147,4	script	Kafra Staff::kaf_bat	4_F_KAFRA9,{
+	cutin "kafra_09",2;
+	callfunc "F_Kafra",0,2,1,150,0;
+}

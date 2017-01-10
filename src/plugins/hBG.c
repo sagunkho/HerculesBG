@@ -1,0 +1,3038 @@
+/**
+ * This file is a Hercules Plugin.
+ * http://herc.ws - http://github.com/HerculesWS/Hercules
+ *  __                 _
+ * / _\_ __ ___   ___ | | _______  ___   _ ____
+ * \ \| '_ ` _ \ / _ \| |/ / _ \ \/ / | | |_  /
+ * _\ \ | | | | | (_) |   <  __/>  <| |_| |/ /
+ * \__/_| |_| |_|\___/|_|\_\___/_/\_\\__, /___|
+ *                                   |___/
+ * Copyright (c) 2016 Smokexyz.
+ * All rights reserved.
+ *
+ * hBattlegrounds (Hercules Battlegrounds)
+ * * * * * * * * * * * * * * * * * * * * * * * * */
+
+#include "common/hercules.h" /* Should always be the first Hercules file included! */
+
+#include "common/memmgr.h"
+#include "common/mmo.h"
+#include "common/socket.h"
+#include "common/strlib.h"
+#include "common/nullpo.h"
+#include "common/utils.h"
+#include "common/timer.h"
+
+#include "map/clif.h"
+#include "map/pc.h"
+#include "map/script.h"
+#include "map/npc.h"
+#include "map/party.h"
+#include "map/mapreg.h"
+#include "map/guild.h"
+#include "map/chat.h"
+#include "map/quest.h"
+#include "map/mob.h"
+#include "map/map.h"
+#include "map/pet.h"
+#include "map/homunculus.h"
+#include "map/mercenary.h"
+#include "map/elemental.h"
+
+#include "plugins/HPMHooking.h" /* Hooking Macros */
+#include "common/HPMDataCheck.h" /* should always be the last Hercules file included! */
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/**
+ * HPM Structure
+ */
+HPExport struct hplugin_info pinfo = {
+	"Hercules Battlegrounds",    // Plugin name
+	SERVER_TYPE_MAP, // Server Type
+	"0.1",       // Plugin version
+	HPM_VERSION, // HPM Version (automatically updated)
+};
+
+
+/**
+ * Global Variable Delcarations.
+ */
+
+#define MAX_BATTLEGROUND_TEAMS 13
+
+/**
+ * BGD Structure Appendant
+ */
+struct hBG_data {
+	time_t created_at; // Creation of this Team
+	int leader_char_id;
+	unsigned int color;
+	// BG Guild Link
+	struct guild *g;
+	bool reveal_pos, reveal_pos2, reveal_flag;
+	// Score Board
+	int team_score;
+};
+
+/**
+ * hBG Queue Member Linked List
+ */
+struct hBG_queue_member {
+	int position;
+	struct map_session_data *sd;
+	struct hBG_queue_member *next;
+};
+
+/**
+ * MSD Structure Appendant
+ */
+struct hBG_queue_data {
+	unsigned int q_id, users, min_level;
+	struct hBG_queue_member *first, *last;
+	char queue_name[50], join_event[EVENT_NAME_LENGTH];
+};
+
+/**
+ * MSD Structure Appendant
+ */
+struct hBG_map_session_data {
+	unsigned int bg_kills;
+	struct {
+		unsigned afk : 1;
+	} state;
+};
+
+/**
+ * MOBD Structure Appendant
+ */
+struct hBG_mob_data {
+	struct {
+		unsigned immunity: 1;
+	} state;
+};
+
+/**
+ * MAPD Structure Appendant
+ */
+struct hBG_mapflag {
+	unsigned hBG_topscore : 1; // No Detect NoMapFlag
+};
+
+/**
+ * Queue Database
+ */
+static struct DBMap* hBG_queue_db;
+/**
+ * Battleground Guild Storage
+ * Storage of BG "Guild" Information emulation
+ */
+struct guild bg_guild[MAX_BATTLEGROUND_TEAMS];
+/**
+ * Battleground Colors
+ */
+const unsigned int bg_colors[MAX_BATTLEGROUND_TEAMS] = { 0x0000FF, 0xFF0000, 0x00FF00, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF };
+/**
+ * Battleground Counters
+ */
+static unsigned int bg_team_counter = 0; // Next bg_id
+static unsigned int hBG_queue_counter = 0; // Next hBGq_id
+
+/**
+ * Battle Configuration Variables
+ */
+int hBG_afk_announce,
+	hBG_idle_autokick,
+	hBG_reserved_char_id,
+	hBG_items_on_pvp,
+	hBG_reward_rates,
+	hBG_ranking_bonus,
+	hBG_ranked_mode,
+	hBG_ranked_max_games,
+	hBG_reportafk_leaderonly,
+	hBG_balanced_queue,
+	hBG_ip_check,
+	hBG_from_town_only,
+	hBG_enabled,
+	hBG_xy_interval;
+
+/**
+ * Forward Declarations of certain global-scoped functions.
+ */
+int hBG_countlogin(struct map_session_data */*sd*/, bool /*check_bat_room*/);
+int hBG_config_get(const char */*key*/);
+struct guild* hBG_get_guild(int /*bg_id*/);
+struct map_session_data* hBG_getavailablesd(struct battleground_data */*bgd*/);
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                    Packet Sending Functions
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/**
+ * Updates HP bar of a camp member.
+ * Packet Ver < 20140613: 02e0 <account id>.L <name>.24B <hp>.W <max hp>.W (ZC_BATTLEFIELD_NOTIFY_HP).
+ * Packet Ver >= 20140613: 0a0e <account id>.L <hp>.L <max hp>.L (ZC_BATTLEFIELD_NOTIFY_HP2)
+ *
+ * @param sd map_session_data to send the packet to.
+ * @return void.
+ */
+void hBG_send_hp_area(struct map_session_data *sd)
+{
+	unsigned char buf[34];
+	
+	// packet version can be wrong,
+	// due to inconsistend data on other servers.
+#if PACKETVER < 20140613
+	const int cmd = 0x2e0;
+	const struct s_packet_db *packet = clif->packet(cmd);
+	
+	nullpo_retv(sd);
+	
+	if (packet == NULL)
+		return;
+
+	WBUFW(buf, 0) = cmd;
+	WBUFL(buf, 2) = sd->status.account_id;
+	memcpy(WBUFP(buf, 6), sd->status.name, NAME_LENGTH);
+
+	if (sd->battle_status.max_hp > INT16_MAX) { // To correctly display the %hp bar. [Skotlex]
+		WBUFW(buf, 30) = sd->battle_status.hp / (sd->battle_status.max_hp / 100);
+		WBUFW(buf, 32) = 100;
+	}
+	else {
+		WBUFW(buf, 30) = sd->battle_status.hp;
+		WBUFW(buf, 32) = sd->battle_status.max_hp;
+	}
+	
+	clif->send(buf, packet->len, &sd->bl, BG_AREA_WOS);
+#else
+	const int cmd = 0xa0e;
+	const struct s_packet_db *packet = clif->packet(cmd);
+	
+	nullpo_retv(sd);
+	
+	if (packet == NULL)
+		return;
+
+	WBUFW(buf, 0) = cmd;
+	WBUFL(buf, 2) = sd->status.account_id;
+	if (sd->battle_status.max_hp > INT32_MAX) {
+		WBUFL(buf, 6) = sd->battle_status.hp / (sd->battle_status.max_hp / 100);
+		WBUFL(buf, 10) = 100;
+	} else {
+		WBUFL(buf, 6) = sd->battle_status.hp;
+		WBUFL(buf, 10) = sd->battle_status.max_hp;
+	}
+	
+	clif->send(buf, packet->len, &sd->bl, BG_AREA_WOS);
+#endif
+}
+
+/**
+ * Notify a singly client of HP change.
+ *
+ * @param fd  socket fd to write
+ * @param sd  map_session_data containing information to be sent.
+ */
+void hBG_send_hp_single(int fd, struct map_session_data* sd)
+{
+	const int cmd = 0x2e0;
+	const struct s_packet_db *packet = clif->packet(cmd);
+	
+	nullpo_retv(sd);
+	
+	if (packet == NULL)
+		return;
+
+	WFIFOHEAD(fd, packet->len);
+	WFIFOW(fd, 0) = cmd;
+	WFIFOL(fd, 2) = sd->bl.id;
+	memcpy(WFIFOP(fd,6),sd->status.name, NAME_LENGTH);
+	if (sd->battle_status.max_hp > INT16_MAX) {
+		WFIFOW(fd, 30) = sd->battle_status.hp/(sd->battle_status.max_hp/100);
+		WFIFOW(fd, 32) = 100;
+	} else {
+		WFIFOW(fd, 30) = sd->battle_status.hp;
+		WFIFOW(fd, 32) = sd->battle_status.max_hp;
+	}
+
+	WFIFOSET(fd, packet->len);
+}
+
+/**
+ * Character Guild Name Information Packet
+ *
+ * @param sd map_session_data to send the packet to.
+ * @return void
+ */
+void hBG_send_guild_info(struct map_session_data *sd)
+{
+	int fd;
+	int cmd = 0x16c;
+	struct guild *g;
+	const struct s_packet_db *packet = clif->packet(cmd);
+	
+	nullpo_retv(sd);
+
+	if (!sd->bg_id || (g = hBG_get_guild(sd->bg_id)) == NULL || packet == NULL)
+		return;
+
+	fd = sd->fd;
+	WFIFOHEAD(fd, packet->len);
+	WFIFOW(fd,0) = 0x16c;
+	WFIFOL(fd,2) = g->guild_id;
+	WFIFOL(fd,6) = g->emblem_id;
+	WFIFOL(fd,10) = 0;
+	WFIFOB(fd,14) = 0;
+	WFIFOL(fd,15) = 0;
+	memcpy(WFIFOP(fd,19), g->name, NAME_LENGTH);
+
+	WFIFOSET(fd,  packet->len);
+}
+
+
+/**
+ * Sends Guild Window Information
+ * 01b6 <guild id>.L <level>.L <member num>.L <member max>.L <exp>.L <max exp>.L <points>.L <honor>.L <virtue>.L <emblem id>.L <name>.24B <master name>.24B <manage land>.16B <zeny>.L (ZC_GUILD_INFO2)
+ * @param sd map_session_data to send the packet to.
+ * @return void
+ */
+void hBG_guild_window_info(struct map_session_data *sd) {
+	int fd;
+	int cmd = 0x1b6;
+	struct guild *g;
+	const struct s_packet_db *packet = clif->packet(cmd);
+	
+	nullpo_retv(sd);
+	
+	fd = sd->fd;
+	
+	if( (g = hBG_get_guild(sd->bg_id)) == NULL || packet == NULL )
+		return;
+	
+	WFIFOHEAD(fd, packet->len); // Hardcoded Length
+	WFIFOW(fd, 0)= cmd;
+	WFIFOL(fd, 2)= g->guild_id;
+	WFIFOL(fd, 6)= g->guild_lv;
+	WFIFOL(fd,10)= g->connect_member;
+	WFIFOL(fd,14)= g->max_member;
+	WFIFOL(fd,18)= g->average_lv;
+	WFIFOL(fd,22)= (uint32)cap_value(g->exp,0,INT32_MAX);
+	WFIFOL(fd,26)= g->next_exp;
+	WFIFOL(fd,30)= 0; // Tax Points
+	WFIFOL(fd,34)= 0; // Honor: (left) Vulgar [-100,100] Famed (right)
+	WFIFOL(fd,38)= 0; // Virtue: (down) Wicked [-100,100] Righteous (up)
+	WFIFOL(fd,42)= g->emblem_id;
+	memcpy(WFIFOP(fd,46), g->name, NAME_LENGTH);
+	memcpy(WFIFOP(fd,70), g->master, NAME_LENGTH);
+	
+	//safestrncpy(WFIFOP(fd,94), 0, 0); // "'N' castles"
+	WFIFOL(fd, 110) = 0;  // zeny
+	
+	WFIFOSET(fd, packet->len);
+}
+
+/**
+ * Sends Guild Emblem to a player
+ * @param sd   map_session_data to send the packet to
+ * @param g    guild data
+ * @return void
+ */
+void hBG_send_emblem(struct map_session_data *sd, struct guild *g)
+{
+	int fd;
+
+	nullpo_retv(sd);
+	nullpo_retv(g);
+
+	if (g->emblem_len <= 0)
+		return;
+
+	fd = sd->fd;
+	WFIFOHEAD(fd, g->emblem_len+12);
+	WFIFOW(fd,0) = 0x152;
+	WFIFOW(fd,2) = g->emblem_len+12;
+	WFIFOL(fd,4) = g->guild_id;
+	WFIFOL(fd,8) = g->emblem_id;
+	memcpy(WFIFOP(fd,12),g->emblem_data,g->emblem_len);
+
+	WFIFOSET(fd, WFIFOW(fd,2));
+}
+
+/**
+ * Sends guild member list 
+ * @param sd  map_session_data to send the packet to
+ * @return void
+ */
+void hBG_send_guild_member_list(struct map_session_data *sd)
+{
+	int fd, i, c;
+	struct battleground_data *bgd;
+	struct map_session_data *psd;
+	struct hBG_data *hBGd;
+	
+	nullpo_retv(sd);
+
+	if ((fd = sd->fd) == 0)
+		return;
+	if (!sd->bg_id || (bgd = bg->team_search(sd->bg_id)) == NULL)
+		return;
+	else if ((hBGd = getFromBGDATA(bgd, 0)) == NULL)
+		return;
+
+	WFIFOHEAD(fd, bgd->count * 104 + 4);
+	WFIFOW(fd, 0) = 0x154;
+
+	for(i = 0, c = 0; i < bgd->count; i++) {
+		struct hBG_map_session_data *hBGsd;
+
+		if ((psd = bgd->members[i].sd) == NULL || (hBGsd = getFromMSD(psd, 1)) == NULL)
+			continue;
+
+		WFIFOL(fd,c*104+ 4) = psd->status.account_id;
+		WFIFOL(fd,c*104+ 8) = psd->status.char_id;
+		WFIFOW(fd,c*104+12) = psd->status.hair;
+		WFIFOW(fd,c*104+14) = psd->status.hair_color;
+		WFIFOW(fd,c*104+16) = psd->status.sex;
+		WFIFOW(fd,c*104+18) = psd->status.class_;
+		WFIFOW(fd,c*104+20) = psd->status.base_level;
+		WFIFOL(fd,c*104+22) = hBGsd->bg_kills; // Exp slot used to show kills
+		WFIFOL(fd,c*104+26) = 1; // Online
+		WFIFOL(fd,c*104+30) = hBGd->leader_char_id == psd->status.char_id ? 0 : 1; // Position
+		memset(WFIFOP(fd,c*104+34),0,50); // Position Name
+		memcpy(WFIFOP(fd,c*104+84),psd->status.name,NAME_LENGTH); // Player Name
+		c++;
+	}
+
+	WFIFOW(fd, 2)=c*104+4;
+
+	WFIFOSET(fd,WFIFOW(fd,2));
+}
+
+/**
+ * Send guild leave packet
+ * @param sd map_session_data to send the packet to
+ * @param *name contains name of the character.
+ * @param *mes  contains leave message from player.
+ * @return void
+ */
+void hBG_send_leave_single(struct map_session_data *sd, const char *name, const char *mes)
+{
+	unsigned char buf[128];
+	int cmd = 0x15a;
+	const struct s_packet_db *packet = clif->packet(cmd);
+	
+	nullpo_retv(sd);
+	
+	if (packet == NULL)
+		return;
+	
+	WBUFW(buf, 0) = cmd;
+	memcpy(WBUFP(buf, 2), name, NAME_LENGTH);
+	memcpy(WBUFP(buf,26), mes, 40);
+	
+	clif->send(buf, packet->len, &sd->bl, SELF);
+}
+
+/**
+ * Notifies clients of a battleground message ZC_BATTLEFIELD_CHAT
+ * 02dc <packet len>.W <account id>.L <name>.24B <message>.?B
+ *
+ * @param bgd battleground_data to send the message to
+ * @param src_id id of the source of the message.
+ * @param name contains the name of the character.
+ * @param mes contains the message to be sent.
+ * @param len contains the length of the message.
+ * @return void.
+ */
+void hBG_send_chat_message(struct battleground_data *bgd, int src_id, const char *name, const char *mes, int len)
+{
+	struct map_session_data *sd;
+	unsigned char *buf;
+
+	nullpo_retv(bgd);
+	nullpo_retv(name);
+	nullpo_retv(mes);
+
+	if ((sd = hBG_getavailablesd(bgd)) == NULL)
+		return;
+
+	len = (int)strlen(mes);
+	Assert_retv(len <= INT16_MAX - NAME_LENGTH - 8);
+	buf = (unsigned char*)aMalloc((len + NAME_LENGTH + 8)*sizeof(unsigned char));
+
+	WBUFW(buf, 0) = 0x2dc;
+
+	WBUFW(buf, 2) = len + NAME_LENGTH + 8;
+	WBUFL(buf, 4) = src_id;
+	memcpy(WBUFP(buf, 8), name, NAME_LENGTH);
+	memcpy(WBUFP(buf, 32), mes, len); // [!] no NULL terminator
+
+	clif->send(buf, WBUFW(buf, 2), &sd->bl, BG);
+
+	if (buf)
+		aFree(buf);
+}
+
+/**
+ * Notifies the client of a guild expulsion.
+ *
+ * @param sd   map_session_data to send the packet to
+ * @param *name  contains the name of the character.
+ * @param *mes   contains the expulsion message.
+ */
+void hBG_send_expulsion(struct map_session_data *sd, const char *name, const char *mes)
+{
+	int fd;
+	int cmd = 0x15c;
+	const struct s_packet_db *packet = clif->packet(cmd);
+	
+	nullpo_retv(sd);
+	
+	if (packet == NULL)
+		return;
+
+	fd = sd->fd;
+	WFIFOHEAD(fd, packet->len);
+	WFIFOW(fd,0) = cmd;
+	safestrncpy((char*)WFIFOP(fd,2), name, NAME_LENGTH);
+	safestrncpy((char*)WFIFOP(fd,26), mes, 40);
+	safestrncpy((char*)WFIFOP(fd,66), "", NAME_LENGTH);
+	WFIFOSET(fd, packet->len);
+}
+
+/**
+ * Notifies a single client of BG score updates
+ * 
+ * @param sd map_session_data to send the packet to
+ * @return void
+ */
+void hBG_update_score_single(struct map_session_data *sd) {
+	int fd;
+	int cmd = 0x2de;
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+	struct hBG_mapflag *hBG_mf = getFromMAPD(&map->list[sd->bl.m], 0);
+	const struct s_packet_db *packet = clif->packet(cmd);
+	
+	nullpo_retv(sd);
+	
+	if (packet == NULL)
+		return;
+	
+	fd = sd->fd;
+
+	WFIFOHEAD(fd, packet->len);
+	WFIFOW(fd,0) = cmd;
+
+	if (map->list[sd->bl.m].flag.battleground == 2) { // Score Board on Map. Team vs Team
+		WFIFOW(fd,2) = map->list[sd->bl.m].bgscore_lion;
+		WFIFOW(fd,4) = map->list[sd->bl.m].bgscore_eagle;
+	} else if (map->list[sd->bl.m].flag.battleground == 3
+			&& (bgd = bg->team_search(sd->bg_id)) != NULL
+			&& (hBGd = getFromBGDATA(bgd, 0)) != NULL) { // Score Board Multiple. Team vs Best Score
+		WFIFOW(fd,2) = hBGd->team_score;
+		WFIFOL(fd,4) = hBG_mf->hBG_topscore;
+	}
+	WFIFOSET(fd, packet->len);
+}
+
+/**
+ * Notifies all clients in a Battleground Team
+ *
+ * @param bgd battleground_data containing the map_session_datas to send the packet to
+ * @return void
+ */
+void hBG_update_score_team(struct battleground_data *bgd)
+{
+	unsigned char buf[6];
+	struct map_session_data *sd;
+	int i, m, cmd = 0x2de;
+	struct hBG_data *hBGd = getFromBGDATA(bgd, 0);
+	struct hBG_mapflag *hBG_mf;
+	const struct s_packet_db *packet = clif->packet(cmd);
+
+	nullpo_retv(bg);
+
+	if ((m = map->mapindex2mapid(bgd->mapindex)) < 0
+		|| hBGd == NULL
+		|| (hBG_mf = getFromMAPD(&map->list[m], 0)) == NULL
+		|| packet == NULL)
+		return;
+
+	WBUFW(buf,0) = cmd;
+	WBUFW(buf,2) = hBGd->team_score;
+	WBUFW(buf,4) = hBG_mf->hBG_topscore;
+
+	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+		if ((sd = bgd->members[i].sd) == NULL || sd->bl.m != m)
+			continue;
+
+		clif->send(buf, packet->len, &sd->bl, SELF);
+	}
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                    Queue System Functions
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/**
+ * Searches hBG_queue_db by q_id
+ * @param q_id contains the id of the queue to be searched.
+ * @return hBG_queue_data * pointer to the memory location or null if not found.
+ */
+struct hBG_queue_data* hBG_queue_search(int q_id)
+{ // Search a Queue using q_id
+	if (!q_id)
+		return NULL;
+	
+	return (struct hBG_queue_data *) idb_get(hBG_queue_db, q_id);
+}
+
+/**
+ * Creates a Queue
+ * @param queue_name contains the name of the queue.
+ * @param join_event contains the event run on joining the queue.
+ * @param min_level contains the minimum level to be able to join.
+ * @return queue_id id of the queue created.
+ */
+int hBG_queue_create(const char* queue_name, const char* join_event, int min_level)
+{
+	struct hBG_queue_data *hBGqd;
+	
+	if (++hBG_queue_counter <= 0)
+		hBG_queue_counter = 1;
+
+	CREATE(hBGqd, struct hBG_queue_data, 1);
+	hBGqd->q_id = hBG_queue_counter;
+	
+	safestrncpy(hBGqd->queue_name, queue_name, sizeof(hBGqd->queue_name));
+	safestrncpy(hBGqd->join_event, join_event, sizeof(hBGqd->join_event));
+	
+	hBGqd->first = hBGqd->last = NULL; // First and Last Queue Members
+	hBGqd->users = 0;
+	hBGqd->min_level = min_level;
+	
+	idb_put(hBG_queue_db, hBG_queue_counter, hBGqd);
+
+	return hBGqd->q_id;
+}
+
+/**
+ * Remove all queue members from the queue and free the links.
+ * @param hBGqd pointer to the queue data.
+ * @return void.
+ */
+void hBG_queue_members_finalize(struct hBG_queue_data *hBGqd)
+{
+	struct hBG_queue_member *head, *next;
+	
+	nullpo_retv(hBGqd);
+
+	head = hBGqd->first;
+	while (head) {
+		next = head->next;
+		
+		aFree(head);
+		
+		head = next;
+	}
+
+	hBGqd->first = hBGqd->last = NULL;
+	hBGqd->users = 0;
+}
+
+/**
+ * Add a player to the queue.
+ * @param hBGqd pointer to the queue data.
+ * @param sd    player to be added to the queue.
+ * @return postition of the player in queue.
+ */
+int hBG_queue_member_add(struct hBG_queue_data *hBGqd, struct map_session_data *sd)
+{
+	struct hBG_queue_member *hBGqm;
+
+	nullpo_retr(0, hBGqd);
+	nullpo_retr(0, sd);
+
+	hBGqd->users++;
+	
+	CREATE(hBGqm, struct hBG_queue_member, 1);
+	
+	hBGqm->sd = sd;
+	hBGqm->position = hBGqd->users;
+	hBGqm->next = NULL;
+	
+	if (getFromMSD (sd, 0) == NULL)
+		addToMSD(sd, hBGqd, 0, false);
+	
+	if (hBGqd->last == NULL) {
+		hBGqd->first = hBGqd->last = hBGqm; // Attach to first position
+	} else { // Attach at the end of the queue
+		hBGqd->last->next = hBGqm;
+		hBGqd->last = hBGqm;
+	}
+	
+	return hBGqm->position;
+}
+
+/**
+ * Get a member of the queue from position n.
+ * @param hBGqd    pointer to the queue data
+ * @param position position of the player in queue
+ * @return queue_member data or NULL if not found.
+ */
+struct hBG_queue_member* hBG_queue_member_get(struct hBG_queue_data *hBGqd, int position)
+{
+	struct hBG_queue_member *head;
+	if (!hBGqd) return NULL;
+
+	head = hBGqd->first;
+	while (head != NULL) {
+		if (head->sd && head->position == position)
+			return head;
+
+		head = head->next;
+	}
+
+	return NULL;
+}
+
+/**
+ * Clear a queue and remove from memory.
+ * @param hBGqd pointer to queue_data
+ * return 1 on success, 0 on failure.
+ */
+int hBG_queue_destroy(struct hBG_queue_data *hBGqd)
+{
+	nullpo_ret(hBGqd);
+	
+	hBG_queue_members_finalize(hBGqd);
+	
+	idb_remove(hBG_queue_db, hBGqd->q_id);
+	
+	return 1;
+}
+
+/**
+ * Remove a member from a queue
+ * @param hBGqd pointer to queue data.
+ * @param id    block list ID of player in queue.
+ * @return position of a player in the queue or 0 if not found.
+ */
+int hBG_queue_member_remove(struct hBG_queue_data *hBGqd, int id)
+{
+	struct hBG_queue_member *head, *previous;
+	int i;
+	
+	nullpo_retr(0, hBGqd);
+
+	head = hBGqd->first;
+	previous = NULL;
+
+	while (head != NULL) {
+		if (head->sd && head->sd->bl.id == id) {
+			struct hBG_queue_member *next;
+			
+			next = head->next;
+			i = head->position;
+			
+			hBGqd->users--;
+			
+			
+			// De-attach target from the main queue
+			if (previous) {
+				previous->next = head->next;
+			} else {
+				hBGqd->first = head->next; // Deleted is on first position
+			}
+			
+			if (head->next == NULL)
+				hBGqd->last = previous; // Deleted is on last position
+			
+			while (next != NULL) {
+				next->position--; // Decrement positions of the next in queue.
+				next = next->next;
+			}
+			
+			aFree(head);
+			
+			return i;
+		}
+
+		previous = head;
+		head = head->next;
+	}
+
+	return 0;
+}
+
+/**
+ * Search a member in the queue by Block List ID.
+ * @param hBGqd pointer to queue data.
+ * @param id    block list ID of a player in queue.
+ * @return position of a player in the queue or 0 if not found.
+ */
+int hBG_queue_member_search(struct hBG_queue_data *hBGqd, int id)
+{
+	struct hBG_queue_member *head;
+	
+	nullpo_retr(0,hBGqd);
+
+	head = hBGqd->first;
+
+	while (head != NULL) {
+		if (head->sd && head->sd->bl.id == id)
+			return head->position;
+
+		head = head->next;
+	}
+
+	return 0; // Not Found
+}
+
+/**
+ * Add a player to the queue.
+ * @param sd pointer to player to be added in queue.
+ * @param q_id ID of the queue to be appended.
+ * @return 0 on failure, 1 on success.
+ */
+int hBG_queue_join(struct map_session_data *sd, int q_id)
+{
+	char output[128];
+	struct hBG_queue_data *hBGqd;
+	int i;
+	
+	nullpo_ret(sd);
+	
+	if (hBG_config_get("battle_configuration/hBG_from_town_only") && !map->list[sd->bl.m].flag.town) {
+		clif->message(sd->fd,"You only can join BG queues from Towns or BG Waiting Room.");
+		return 0;
+	} else if (sd->bg_id) {
+		clif->message(sd->fd,"You cannot join queues when already playing Battlegrounds.");
+		return 0;
+	} else if (sd->sc.data[SC_JAILED]) {
+		clif->message(sd->fd,"You cannot join queues when jailed.");
+		return 0;
+	}
+	// Get Queue by ID
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL) {
+		return 0; // Current Queue don't exists
+	} else if ((i = hBG_queue_member_search(hBGqd, sd->bl.id))) { // You cannot join a Queue if you are already in one.
+		sprintf(output, "You are already in %s queue at position %d.", hBGqd->queue_name, i);
+		clif->message(sd->fd, output);
+		return 0;
+	} else if (hBGqd && hBGqd->min_level && sd->status.base_level < hBGqd->min_level) {
+		sprintf(output,"You cannot join %s queue. Required min level is %d.", hBGqd->queue_name, hBGqd->min_level);
+		clif->message(sd->fd,output);
+		return 0;
+	} else if (hBG_config_get("battle_configuration/hBG_ip_check") && hBG_countlogin(sd,false) > 0) {
+		sprintf(output,"You cannot join %s queue. Double Login detected.", hBGqd->queue_name);
+		clif->message(sd->fd,output);
+		return 0;
+	}
+
+	i = hBG_queue_member_add(hBGqd, sd);
+	
+	sprintf(output,"You have joined %s queue at position %d.", hBGqd->queue_name, i);
+	
+	clif->message(sd->fd,output);
+
+	if (hBGqd->join_event[0])
+		npc->event_do(hBGqd->join_event);
+
+	return 1;
+}
+
+/**
+ * Process player leaving a queue.
+ * @param sd pointer to player leaving the queue.
+ * @param q_id ID of the queue to be left.
+ * @return 0 on failure, 1 on success.
+ */
+int hBG_queue_leave(struct map_session_data *sd, int q_id)
+{
+	char output[128];
+	struct hBG_queue_data *qd;
+
+	if ((qd = hBG_queue_search(q_id)) == NULL)
+		return 0;
+
+	if (!hBG_queue_member_remove(qd,sd->bl.id)) {
+		sprintf(output,"You are not in the %s queue.", qd->queue_name);
+		clif->message(sd->fd,output);
+		return 0;
+	}
+	
+	sprintf(output, "You have been removed from the %s queue.", qd->queue_name);
+	clif->message(sd->fd, output);
+
+	return 1;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                     Battleground Functions
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/**
+ * Return any available player in a Battleground
+ * @param bgd pointer to battleground queue.
+ * @return map_session_data *sd pointer to player data or NULL if not found.
+ */
+struct map_session_data* hBG_getavailablesd(struct battleground_data *bgd)
+{
+	int i;
+	nullpo_retr(NULL, bgd);
+	ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd != NULL);
+	return(i < MAX_BG_MEMBERS) ? bgd->members[i].sd : NULL;
+}
+
+/**
+ * Count the number of players with the same IP in battlegrounds.
+ * @param sd pointer to map session data.
+ * @param check_bat_room boolean to include checks in bat_room.
+ * @return amount of accounts online.
+ */
+int hBG_countlogin(struct map_session_data *sd, bool check_bat_room)
+{
+	int c = 0, m = map->mapname2mapid("bat_room");
+	struct map_session_data* pl_sd;
+	struct s_mapiterator* iter;
+	nullpo_ret(sd);
+
+	iter = mapit_getallusers();
+	for(pl_sd = (TBL_PC*)mapit->first(iter); mapit->exists(iter); pl_sd = (TBL_PC*)mapit->next(iter)) {
+		if (!(getFromMSD(sd, 0) || map->list[pl_sd->bl.m].flag.battleground || (check_bat_room && pl_sd->bl.m == m)))
+			continue;
+		if (sockt->session[sd->fd]->client_addr == sockt->session[pl_sd->fd]->client_addr)
+			c++;
+	}
+	mapit->free(iter);
+	return c;
+}
+
+/**
+ * Performs initialization tasks on new battlegrounds.
+ * @param m map Index
+ * @param rx respawn X co-ordinate
+ * @param ry respawn Y co-ordinate
+ * @param guild_index Index of the BG guild to be used
+ * @param *ev NPC Script event to be called when player logs out.
+ * @param *dev NPC Script event to be called when player dies.
+ * @return ID of the battleground.
+ */
+int hBG_create(unsigned short m, short rx, short ry, int guild_index, const char *ev, const char *dev)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+
+	CREATE(bgd, struct battleground_data, 1);
+	CREATE(hBGd, struct hBG_data, 1);
+
+	if (++bg_team_counter <= 0)
+		bg_team_counter = 1;
+
+	bgd->bg_id = bg_team_counter;
+	bgd->count = 0;
+	bgd->mapindex = m;
+	bgd->x = rx;
+	bgd->y = ry;
+
+	safestrncpy(bgd->logout_event, ev, sizeof(bgd->logout_event));
+	safestrncpy(bgd->die_event, dev, sizeof(bgd->die_event));
+
+	memset(&bgd->members, 0, sizeof(bgd->members));
+
+	hBGd->color = bg_colors[guild_index];
+	hBGd->created_at = 0;
+	hBGd->g = &bg_guild[guild_index];
+
+	addToBGDATA(bgd, hBGd, 0, true);
+
+	idb_put(bg->team_db, bg_team_counter, bgd);
+
+	return bgd->bg_id;
+}
+
+/**
+ * Add a player to the Battleground Team
+ * @param bg_id Id of the battleground
+ * @param sd pointer to the player's session data.
+ * @return 0 on failure, 1 on success.
+ */
+int hBG_team_join(int bg_id, struct map_session_data *sd)
+{ // Player joins team
+	int i;
+	struct battleground_data *bgd = bg->team_search(bg_id);
+	struct map_session_data *pl_sd;
+	struct hBG_map_session_data *hBGsd;
+	struct hBG_data *hBGd;
+
+	if (bgd == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL || sd == NULL || sd->bg_id)
+		return 0;
+
+	ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd == NULL);
+	
+	if (i == MAX_BG_MEMBERS) return 0; // No free slots
+
+	// Handle Additional Map Session BG data
+	if (!(hBGsd = getFromMSD(sd, 1))) {
+		CREATE(hBGsd, struct hBG_map_session_data, 1);
+		addToMSD(sd, hBGsd, 1, false);
+	}
+	
+	hBGsd->bg_kills = 0;
+
+	// Update player's idle item.
+	pc->update_idle_time(sd, BCIDLE_CHAT);
+
+	sd->bg_id = bg_id;
+
+	bgd->members[i].sd = sd;
+	bgd->members[i].x = sd->bl.x;
+	bgd->members[i].y = sd->bl.y;
+	bgd->count++;
+
+	// Creation Tick = First member joined.
+	if (hBGd->created_at == 0)
+		hBGd->created_at = sockt->last_tick;
+
+	// First Join = Team Leader
+	if (hBGd->leader_char_id == 0)
+		hBGd->leader_char_id = sd->status.char_id;
+
+
+	guild->send_dot_remove(sd);
+
+	hBG_send_guild_info(sd); // Send Guild Name/Emblem under character
+	
+	clif->charnameupdate(sd); // Update character's nameplate
+
+	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+		if ((pl_sd = bgd->members[i].sd) == NULL)
+			continue;
+
+		// Simulate Guild Information
+		hBG_guild_window_info(pl_sd);
+		hBG_send_emblem(pl_sd, hBGd->g);
+		hBG_send_guild_member_list(pl_sd);
+
+		if (pl_sd != sd)
+			hBG_send_hp_single(sd->fd,pl_sd);
+	}
+
+	clif->guild_emblem_area(&sd->bl);
+
+	clif->bg_hp(sd);
+	clif->bg_xy(sd);
+
+	return 1;
+}
+
+/**
+ * Reveal a player's position to another player.
+ * @param bl pointer to block list.
+ * @param ap list of arguments
+ * @return 0.
+ */
+int hBG_reveal_pos(struct block_list *bl, va_list ap)
+{
+	struct map_session_data *pl_sd, *sd = NULL;
+	int flag, color;
+
+	pl_sd = (struct map_session_data *)bl;
+	sd = va_arg(ap,struct map_session_data *); // Source
+	flag = va_arg(ap,int);
+	color = va_arg(ap,int);
+
+	if (pl_sd->bg_id == sd->bg_id)
+		return 0; // Same Team
+
+	clif->viewpoint(pl_sd,sd->bl.id,flag,sd->bl.x,sd->bl.y,sd->bl.id,color);
+	return 0;
+}
+
+/**
+ * Remove minimap indicator for player.
+ * @param sd pointer to session data.
+ * @return 0
+ */
+int hBG_send_dot_remove(struct map_session_data *sd)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+	int m;
+
+	if (sd && sd->bg_id && (bgd = bg->team_search(sd->bg_id)) != NULL
+	   && (hBGd = getFromBGDATA(bgd, 0)) != NULL) {
+		clif->bg_xy_remove(sd);
+		if (hBGd->reveal_pos && (m = map->mapindex2mapid(bgd->mapindex)) == sd->bl.m)
+			map->foreachinmap(hBG_reveal_pos, m,BL_PC,sd,2,0xFFFFFF);
+	}
+	return 0;
+}
+
+/**
+ * Remove a player from a team.
+ * @param sd pointer to session data.
+ * @param flag type of leave.
+ * @return Amount of player in the BG or 0 on failure.
+ */
+int hBG_team_leave(struct map_session_data *sd, int flag)
+{ // Single Player leaves team
+	int i;
+	struct battleground_data *bgd;
+	struct hBG_map_session_data *hBGsd;
+	struct hBG_data *hBGd;
+	struct map_session_data *pl_sd;
+	struct guild *g;
+
+	if (sd == NULL || !sd->bg_id)
+		return 0;
+	else if ((hBGsd = getFromMSD(sd, 1)) == NULL)
+		return 0;
+	else if ((bgd = bg->team_search(sd->bg_id)) == NULL)
+		return 0;
+	else if ((hBGd = getFromBGDATA(bgd, 0)) == NULL)
+		return 0;
+
+	if (bgd && bgd->logout_event[0] && flag)
+		npc->event(sd, bgd->logout_event, 0);
+
+	// Packets
+	hBG_send_leave_single(sd, sd->status.name, "Leaving Battle...");
+	hBG_send_dot_remove(sd);
+	sd->bg_id = 0;
+	hBGsd->bg_kills = 0;
+	
+	removeFromMSD(sd, 1);
+	//hBG_member_removeskulls(sd);
+
+	// Remove Guild Skill Buffs
+	status_change_end(&sd->bl, SC_GUILDAURA, INVALID_TIMER);
+
+	// Refresh Guild Information
+	if (sd->status.guild_id && (g = guild->search(sd->status.guild_id)) != NULL) {
+		clif->guild_belonginfo(sd, g);
+		clif->guild_basicinfo(sd);
+		clif->guild_allianceinfo(sd);
+		clif->guild_memberlist(sd);
+		clif->guild_skillinfo(sd);
+		clif->guild_emblem(sd, g);
+	}
+
+	clif->charnameupdate(sd);
+	clif->guild_emblem_area(&sd->bl);
+
+	if (!bgd) return 0;
+
+	ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd == sd);
+
+	if (i < MAX_BG_MEMBERS) // Removes member from BG
+		memset(&bgd->members[i], 0, sizeof(bgd->members[0]));
+	
+	if (hBGd->leader_char_id == sd->status.char_id)
+		hBGd->leader_char_id = 0;
+
+	bgd->count--;
+	
+	for(i = 0; i < MAX_BG_MEMBERS; i++) { // Update other BG members
+		if ((pl_sd = bgd->members[i].sd) == NULL)
+			continue;
+		
+		if (!hBGd->leader_char_id) { // Set new Leader first on the list
+			hBGd->leader_char_id = pl_sd->status.char_id;
+		}
+
+		switch(flag) {
+			case 3: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Status..."); break;
+			case 2: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Report..."); break;
+			case 1: hBG_send_expulsion(pl_sd, sd->status.name, "User has quit the game..."); break;
+			case 0: hBG_send_leave_single(pl_sd, sd->status.name, "Leaving Battle..."); break;
+		}
+
+		hBG_guild_window_info(pl_sd);
+		hBG_send_emblem(pl_sd, hBGd->g);
+		hBG_send_guild_member_list(pl_sd);
+	}
+
+	return bgd->count;
+}
+
+/**
+ * Get guild data of the Battleground
+ * @param bg_id ID of the battleground
+ * @return guild of the battleground or NULL.
+ */
+struct guild* hBG_get_guild(int bg_id)
+{
+	struct battleground_data *bgd = bg->team_search(bg_id);
+	struct hBG_data *hBGd;
+
+	if (bgd == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
+		return NULL;
+
+	return hBGd->g;
+}
+
+/**
+ * Remove all members from a BG Team.
+ * @param bg_id ID of the battleground.
+ * @param remove Boolean for removal of BG from team_db.
+ * @return 0 on failure, 1 on success.
+ */
+int hBG_team_finalize(int bg_id, bool remove)
+{ // Deletes BG Team from db
+	int i;
+	struct map_session_data *sd;
+	struct battleground_data *bgd = bg->team_search(bg_id);
+	struct hBG_data *hBGd;
+	struct guild *g;
+
+	if (bgd == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
+		return 0;
+
+	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+		if ((sd = bgd->members[i].sd) == NULL)
+			continue;
+
+		hBG_send_dot_remove(sd);
+		sd->bg_id = 0;
+
+		// Remove Guild Skill Buffs
+		status_change_end(&sd->bl,SC_GUILDAURA,INVALID_TIMER);
+
+		if (sd->status.guild_id && (g = guild->search(sd->status.guild_id)) != NULL) {
+			clif->guild_belonginfo(sd,g);
+			clif->guild_basicinfo(sd);
+			clif->guild_allianceinfo(sd);
+			clif->guild_memberlist(sd);
+			clif->guild_skillinfo(sd);
+		} else {
+			hBG_send_leave_single(sd, sd->status.name, "Leaving Battle...");
+		}
+
+		clif->charnameupdate(sd);
+		clif->guild_emblem_area(&sd->bl);
+	}
+
+	if (remove) {
+		idb_remove(bg->team_db, bg_id);
+	} else {
+		bgd->count = 0;
+		hBGd->leader_char_id = 0;
+		hBGd->team_score = 0;
+		hBGd->created_at = 0;
+		memset(&bgd->members, 0, sizeof(bgd->members));
+	}
+
+	return 1;
+}
+
+/**
+ * Give items to the Battleground Team.
+ * @param bg_id ID of the battleground.
+ * @param nameid ID of the item.
+ * @param amount Amount of the Item to be given.
+ * @return void;
+ */
+void hBG_team_getitem(int bg_id, int nameid, int amount)
+{
+	struct battleground_data *bgd;
+	struct map_session_data *sd;
+	struct item_data *id;
+	struct item it;
+	int reward_rate = hBG_config_get("battle_configuration/bg_reward_rates");
+	int get_amount, j, flag;
+
+	if (amount < 1 || (bgd = bg->team_search(bg_id)) == NULL || (id = itemdb->exists(nameid)) == NULL)
+		return;
+	if (nameid != 7828 && nameid != 7829 && nameid != 7773)
+		return;
+	if (reward_rate != 100)
+		amount = amount * reward_rate / 100;
+
+	memset(&it, 0, sizeof(it));
+	it.nameid = nameid;
+	it.identify = 1;
+
+	for(j = 0; j < MAX_BG_MEMBERS; j++) {
+		if ((sd = bgd->members[j].sd) == NULL)
+			continue;
+
+		get_amount = amount;
+
+		if ((flag = pc->additem(sd,&it,get_amount,LOG_TYPE_SCRIPT)))
+			clif->additem(sd,0,0,flag);
+	}
+}
+
+/**
+ * Give kafra points to the team.
+ * @param bg_id ID of the battleground.
+ * @param amount Amount of kafra points to be given.
+ */
+void hBG_team_get_kafrapoints(int bg_id, int amount)
+{
+	struct battleground_data *bgd;
+	struct map_session_data *sd;
+	int i, get_amount, reward_rate = hBG_config_get("battle_configuration/bg_reward_rates");
+
+	if ((bgd = bg->team_search(bg_id)) == NULL)
+		return;
+
+	if (reward_rate != 100)
+		amount = amount * reward_rate/ 100;
+
+	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+		if ((sd = bgd->members[i].sd) == NULL)
+			continue;
+
+		get_amount = amount;
+		pc->getcash(sd,0,get_amount);
+	}
+}
+
+/* ==============================================================
+ bg_arena (0 EoS | 1 Boss | 2 TI | 3 CTF | 4 TD | 5 SC | 6 CON | 7 RUSH | 8 DOM)
+ bg_result (0 Won | 1 Tie | 2 Lost)
+ ============================================================== */
+void bg_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int quest_id, const char *var, int add_value, int bg_arena, int bg_result)
+{
+	struct battleground_data *bgd;
+	struct map_session_data *sd;
+	struct item_data *id;
+	struct item it;
+	int j, flag, get_amount, reward_rate = hBG_config_get("battle_configuration/hBG_reward_rates");
+
+	if (amount < 1 || (bgd = bg->team_search(bg_id)) == NULL || (id = itemdb->exists(nameid)) == NULL)
+		return;
+
+	if (reward_rate != 100) { // BG Reward Rates
+		amount = amount * reward_rate / 100;
+		kafrapoints = kafrapoints * reward_rate / 100;
+	}
+
+	//bg_result = cap_value(bg_result,0,2);
+
+	memset(&it,0,sizeof(it));
+	if (nameid == 7828 || nameid == 7829 || nameid == 7773) {
+		it.nameid = nameid;
+		it.identify = 1;
+	} else {
+		nameid = 0;
+	}
+
+	for(j = 0; j < MAX_BG_MEMBERS; j++) {
+		if ((sd = bgd->members[j].sd) == NULL)
+			continue;
+
+		if (quest_id) quest->add(sd,quest_id);
+		pc_setglobalreg(sd, script->add_str(var), pc_readglobalreg(sd,script->add_str(var)) + add_value);
+
+		if (kafrapoints > 0) {
+			get_amount = kafrapoints;
+			pc->getcash(sd,0,get_amount);
+		}
+
+		if (nameid && amount > 0) {
+			get_amount = amount;
+
+			if ((flag = pc->additem(sd,&it,get_amount,LOG_TYPE_SCRIPT)))
+				clif->additem(sd,0,0,flag);
+		}
+	}
+}
+
+/**
+ * Build BG Guild Emulation data.
+ * @params (void)
+ * @return void.
+ */
+void hBG_build_guild_data(void)
+{
+	int i, j, k, gskill;
+	memset(&bg_guild, 0, sizeof(bg_guild));
+
+	for(i = 1; i <= MAX_BATTLEGROUND_TEAMS; i++) { // Emblem Data - Guild ID's
+		FILE* fp = NULL;
+		char gpath[256];
+
+		j = i - 1;
+		bg_guild[j].emblem_id = 1; // Emblem Index
+		bg_guild[j].guild_id = SHRT_MAX - j;
+		bg_guild[j].guild_lv = 1;
+		bg_guild[j].max_member = MAX_BG_MEMBERS;
+
+		// Skills
+		if (j < 3) { // Clan Skills
+			for(k = 0; k < MAX_GUILDSKILL; k++) {
+				gskill = k + GD_SKILLBASE;
+				bg_guild[j].skill[k].id = gskill;
+				switch(gskill) {
+					case GD_GLORYGUILD:
+						bg_guild[j].skill[k].lv = 0;
+						break;
+					case GD_APPROVAL:
+					case GD_KAFRACONTRACT:
+					case GD_GUARDRESEARCH:
+					case GD_BATTLEORDER:
+					case GD_RESTORE:
+					case GD_EMERGENCYCALL:
+					case GD_DEVELOPMENT:
+						bg_guild[j].skill[k].lv = 1;
+						break;
+					case GD_GUARDUP:
+					case GD_REGENERATION:
+						bg_guild[j].skill[k].lv = 3;
+						break;
+					case GD_LEADERSHIP:
+					case GD_GLORYWOUNDS:
+					case GD_SOULCOLD:
+					case GD_HAWKEYES:
+						bg_guild[j].skill[k].lv = 5;
+						break;
+					case GD_EXTENSION:
+						bg_guild[j].skill[k].lv = 10;
+						break;
+				}
+			}
+		} else { // Other Data
+			snprintf(bg_guild[j].name, NAME_LENGTH, "Team %d", i - 3); // Team 1, Team 2 ... Team 10
+			strncpy(bg_guild[j].master, bg_guild[j].name, NAME_LENGTH);
+			snprintf(bg_guild[j].position[0].name, NAME_LENGTH, "%s Leader", bg_guild[j].name);
+			strncpy(bg_guild[j].position[1].name, bg_guild[j].name, NAME_LENGTH);
+		}
+
+		sprintf(gpath, "%s/%s/bg_%d.ebm", "plugins","hBG", i);
+		if ((fp = fopen(gpath, "rb")) != NULL) {
+			fseek(fp, 0, SEEK_END);
+			bg_guild[j].emblem_len = (int)ftell(fp);
+			fseek(fp, 0, SEEK_SET);
+			fread(&bg_guild[j].emblem_data, 1, bg_guild[j].emblem_len, fp);
+			fclose(fp);
+		} else {
+			ShowWarning("Error reading '"CL_WHITE"%s"CL_RESET"' emblem data file.\n", gpath);
+		}
+	}
+	
+	ShowStatus("Done reading '"CL_WHITE"%s"CL_RESET"' emblem data files.\n", pinfo.name);
+
+	// Guild Data - Guillaume
+	strncpy(bg_guild[0].name, "Blue Team", NAME_LENGTH);
+	strncpy(bg_guild[0].master, "General Guillaume", NAME_LENGTH);
+	strncpy(bg_guild[0].position[0].name, "Blue Team Leader", NAME_LENGTH);
+	strncpy(bg_guild[0].position[1].name, "Blue Team", NAME_LENGTH);
+
+	// Guild Data - Croix
+	strncpy(bg_guild[1].name, "Red Team", NAME_LENGTH);
+	strncpy(bg_guild[1].master, "Prince Croix", NAME_LENGTH);
+	strncpy(bg_guild[1].position[0].name, "Red Team Leader", NAME_LENGTH);
+	strncpy(bg_guild[1].position[1].name, "Red Team", NAME_LENGTH);
+
+	// Guild Data - Traitors
+	strncpy(bg_guild[2].name, "Green Team", NAME_LENGTH);
+	strncpy(bg_guild[2].master, "Mercenary", NAME_LENGTH);
+	strncpy(bg_guild[2].position[0].name, "Green Team Leader", NAME_LENGTH);
+	strncpy(bg_guild[2].position[1].name, "Green Team", NAME_LENGTH);
+}
+
+/**
+ * Timer function for revealing/hiding mini map positions.
+ * Also handles player AFK mechanic.
+ * @see DBApply
+ * @see hBG_send_xy_timer
+ * @param data battleground data pointer.
+ * @return int
+ */
+int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
+{
+	struct battleground_data *bgd = DB->data2ptr(data);
+	struct hBG_data *hBGd = getFromBGDATA(bgd, 0);
+
+	struct map_session_data *sd;
+	char output[128];
+	int i, m;
+
+	nullpo_ret(bgd);
+	nullpo_ret(hBGd);
+
+	m = map->mapindex2mapid(bgd->mapindex);
+	hBGd->reveal_flag = !hBGd->reveal_flag; // Switch
+
+	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+		if ((sd = bgd->members[i].sd) == NULL)
+			continue;
+
+		ShowDebug("idletime %d\n",DIFF_TICK(sockt->last_tick, sd->idletime));
+		
+		if (hBG_config_get("battle_configuration/hBG_idle_autokick")
+		   && DIFF_TICK(sockt->last_tick, sd->idletime) >= hBG_config_get("battle_configuration/hBG_idle_autokick")
+		   && hBGd->g) {
+			sprintf(output, "- AFK [%s] Kicked -", sd->status.name);
+			clif->broadcast2(&sd->bl, output, (int)strlen(output)+1, hBGd->color, 0x190, 20, 0, 0, BG);
+
+			hBG_team_leave(sd,3);
+			clif->message(sd->fd, "You have been kicked from Battleground because of your AFK status.");
+			pc->setpos(sd,sd->status.save_point.map,sd->status.save_point.x,sd->status.save_point.y,3);
+			continue;
+		}
+
+		if (sd->bl.x != bgd->members[i].x || sd->bl.y != bgd->members[i].y) { // xy update
+			bgd->members[i].x = sd->bl.x;
+			bgd->members[i].y = sd->bl.y;
+			clif->bg_xy(sd);
+		}
+
+		if (hBGd->reveal_pos && hBGd->reveal_flag && sd->bl.m == m)
+			map->foreachinmap(hBG_reveal_pos,m,BL_PC,sd,1,hBGd->color);
+		// @TODO - Message for AFK Idling
+//		if (hBG_config_get("battle_configuration/bg_idle_announce") && sd->state.afk && bg->g)
+//		{ // Idle announces
+//			sprintf(output, "%s : %s seems to be away. AFK Warning - Can be kicked out with @reportafk", bg->g->name, sd->status.name);
+//			clif->bg_message(bg, bg->bg_id, bg->g->name, output, (int)strlen(output) + 1);
+//		}
+	}
+
+	return 0;
+}
+
+/**
+ * Timer function for revealing/hiding mini map positions.
+ * @see hBG_send_xy_timer_sub
+ */
+int hBG_send_xy_timer(int tid, int64 tick, int id, intptr_t data)
+{
+	bg->team_db->foreach(bg->team_db, hBG_send_xy_timer_sub, tick);
+	return 0;
+}
+
+/**
+ * Add an item to the floor at m (x,y)
+ * @param bl pointer to the block list.
+ * @param m map index
+ * @param x map x co-ordinate
+ * @param y map y co-ordinate
+ * @param nameid ID of the item to be dropped.
+ * @param amount Amount of the item to be dropped.
+ * @return count of the item dropped.
+ */
+int hBG_addflooritem_area(struct block_list* bl, int16 m, int16 x, int16 y, int nameid, int amount)
+{
+	struct item item_tmp;
+	int count, range, i;
+	short mx, my;
+	
+	memset(&item_tmp, 0, sizeof(item_tmp));
+	item_tmp.nameid = nameid;
+	item_tmp.identify = 1;
+	
+	if (bl != NULL ) m = bl->m;
+	
+	count = 0;
+	range = (int)sqrt((float)amount) +2;
+	
+	for( i = 0; i < amount; i++) {
+		if (bl != NULL)
+			map->search_freecell(bl, 0, &mx, &my, range, range, 0);
+		else {
+			mx = x; my = y;
+			map->search_freecell(NULL, m, &mx, &my, range, range, 1);
+		}
+		
+		count += (map->addflooritem(bl, &item_tmp, 1, m, mx, my, 0, 0, 0, 4) != 0) ? 1 : 0;
+	}
+	
+	return count;
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                     Script Commands
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/**
+ * Send out a battleground announcement.
+ * @param mes
+ * @param fontColor
+ * @param fontType
+ * @param fontSize
+ * @param fontAlign
+ * @param fontY
+ */
+BUILDIN(hBG_announce)
+{
+	const char *mes       = script_getstr(st,2);
+	const char *fontColor = script_hasdata(st,3) ? script_getstr(st,3) : NULL;
+	int         fontType  = script_hasdata(st,4) ? script_getnum(st,4) : 0x190; // default fontType (FW_NORMAL)
+	int         fontSize  = script_hasdata(st,5) ? script_getnum(st,5) : 12;    // default fontSize
+	int         fontAlign = script_hasdata(st,6) ? script_getnum(st,6) : 0;     // default fontAlign
+	int         fontY     = script_hasdata(st,7) ? script_getnum(st,7) : 0;     // default fontY
+
+	clif->broadcast2(NULL, mes, (int)strlen(mes)+1, (unsigned int)strtol(fontColor, (char **)NULL, 0), fontType, fontSize, fontAlign, fontY, ALL_CLIENT);
+	return true;
+}
+
+/**
+ * Count the number of logins per IP in battleground
+ * @return count of accounts on same ip.
+ */
+BUILDIN(hBG_logincount)
+{
+	struct map_session_data *sd = script->rid2sd(st);
+	int i = 0;
+
+	if (sd)
+		i = hBG_countlogin(sd,true);
+
+	script_pushint(st,i);
+	return true;
+}
+
+/**
+ * Create a BG Team.
+ * @param map_name Respawn Map Name
+ * @param map_x Respawn Map X
+ * @param map_y Respawn Map Y
+ * @param guild_index BG Guild Index
+ * @param ev Logout Event
+ * @paran dev Die Event
+ */
+BUILDIN(hBG_team_create)
+{
+	const char *map_name, *ev = "", *dev = "";
+	int x, y, m = 0, guild_index, bg_id;
+
+	map_name = script_getstr(st,2);
+	if (strcmp(map_name,"-") != 0 && (m = mapindex->name2id(map_name)) == 0) {
+		script_pushint(st,0);
+		return false;
+	}
+
+	x = script_getnum(st,3);
+	y = script_getnum(st,4);
+	guild_index = script_getnum(st,5);
+	ev = script_getstr(st,6); // Logout Event
+	dev = script_getstr(st,7); // Die Event
+
+	guild_index = cap_value(guild_index, 0, 12);
+	bg_id = hBG_create(m, x, y, guild_index, ev, dev);
+
+	script_pushint(st,bg_id);
+	return true;
+}
+
+/**
+ * Create a Queue
+ * @param queue_name Name of the Queue
+ * @param jev Join Event
+ * @param min_level Minimum level to join the queue.
+ * @return queue Id
+ */
+BUILDIN(hBG_queue_create)
+{
+	const char *queue_name, *jev;
+	int q_id, min_level = 0;
+
+	queue_name = script_getstr(st,2);
+	jev = script_getstr(st,3);
+	
+	if (script_hasdata(st,4))
+		min_level = script_getnum(st,4);
+
+	q_id = hBG_queue_create(queue_name,jev,min_level);
+	script_pushint(st,q_id);
+	return true;
+}
+
+
+/**
+ * Changes/Sets the Queue's Join Event.
+ * @param queue_id
+ * @param jev On Join Event
+ */
+BUILDIN(hBG_queue_event)
+{
+	struct hBG_queue_data *hBGqd;
+	const char *join_event;
+	int q_id;
+
+	q_id = script_getnum(st,2);
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL)
+		return true;
+
+	join_event = script_getstr(st,3);
+	safestrncpy(hBGqd->join_event, join_event, sizeof(hBGqd->join_event));
+	return true;
+}
+
+/**
+ * Makes a player join a queue.
+ * @param Queue ID
+ */
+BUILDIN(hBG_queue_join)
+{
+	int q_id;
+	struct map_session_data *sd = script->rid2sd(st);
+	if (!sd) return true;
+
+	q_id = script_getnum(st,2);
+	hBG_queue_join(sd, q_id);
+
+	return true;
+}
+
+/**
+ * Makes party join a queue.
+ * @param Party ID
+ * @param Queue ID
+ */
+BUILDIN(hBG_queue_partyjoin)
+{
+	int q_id, i, party_id;
+	struct map_session_data *sd;
+	struct party_data *p;
+
+	party_id = script_getnum(st,2);
+	if (!party_id || (p = party->search(party_id)) == NULL) return true;
+
+	q_id = script_getnum(st,3);
+	if (!hBG_queue_search(q_id)) return true;
+
+	for(i = 0; i < MAX_PARTY; i++) {
+		if ((sd = p->data[i].sd) == NULL)
+			continue;
+		hBG_queue_join(sd,q_id);
+	}
+
+	return true;
+}
+
+/**
+ * Makes a player leave a queue.
+ * @param Queue ID
+ */
+BUILDIN(hBG_queue_leave)
+{
+	int q_id;
+	struct map_session_data *sd = script->rid2sd(st);
+	if (!sd) return true;
+
+	q_id = script_getnum(st,2);
+	hBG_queue_leave(sd, q_id);
+	
+	return true;
+}
+
+/**
+ * Request queue information
+ * @param Queue ID
+ * @param Information Type
+ *        0) Users
+ *        1) Copy user list to $@qmembers$ variable and return count.
+ */
+BUILDIN(hBG_queue_data)
+{
+	struct hBG_queue_data *hBGqd;
+	int q_id = script_getnum(st,2),
+	type = script_getnum(st,3);
+
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL)
+	{
+		script_pushint(st,0);
+		return true;
+	}
+
+	switch(type) {
+		case 0: script_pushint(st, hBGqd->users); break;
+		case 1: // User List
+		{
+			int j = 0;
+			struct map_session_data *sd;
+			struct hBG_queue_member *head;
+			head = hBGqd->first;
+			while (head) {
+				if ((sd = head->sd) != NULL) {
+					mapreg->setregstr(reference_uid(script->add_str("$@qmembers$"),j),sd->status.name);
+					j++;
+				}
+				head = head->next;
+			}
+			script_pushint(st,j);
+		}
+			break;
+		default:
+			ShowError("script:hBG_queue_data: unknown queue data type %d.\n", type);
+			break;
+	}
+
+	return true;
+}
+
+/**
+ * Adds all members in queue to a BG team.
+ * @param Queue ID
+ * @param Max Team Members
+ * @param Respawn Map Name
+ * @param Respawn Map X
+ * @param Respawn Map Y
+ * @param BG Guild Index
+ * @param Logout Event
+ * @param Die Event
+ * @return Battleground Id
+ */
+BUILDIN(hBG_queue2team)
+{
+	struct hBG_queue_data *hBGqd;
+	struct hBG_queue_member *qm;
+	const char *map_name, *ev = "", *dev = "";
+	int q_id, max, x, y, i, m=0, guild_index, bg_id;
+
+	q_id = script_getnum(st,2);
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL) {
+		script_pushint(st,0);
+		return true;
+	}
+
+	max = script_getnum(st,3);
+	map_name = script_getstr(st,4);
+
+	if (strcmp(map_name,"-") != 0 && (m = mapindex->name2id(map_name)) == 0) {
+		script_pushint(st,0);
+		return true;
+	}
+
+	x = script_getnum(st,5);
+	y = script_getnum(st,6);
+	guild_index = script_getnum(st,7);
+	ev = script_getstr(st,8); // Logout Event
+	dev = script_getstr(st,9); // Die Event
+
+	guild_index = cap_value(guild_index, 0, 12);
+	if ((bg_id = hBG_create(m, x, y, guild_index, ev, dev)) == 0) { // Creation failed
+		script_pushint(st,0);
+		return true;
+	}
+
+	i = 0; // Counter
+	while ((qm = hBGqd->first) != NULL && i < max && i < MAX_BG_MEMBERS) {
+		if (qm->sd && hBG_team_join(bg_id, qm->sd)) {
+			mapreg->setreg(reference_uid(script->add_str("$@arenamembers"), i), qm->sd->bl.id);
+			hBG_queue_member_remove(hBGqd,qm->sd->bl.id);
+			i++;
+		}
+		else break; // Failed? Should not. Anyway, to avoid a infinite loop
+	}
+
+	mapreg->setreg(script->add_str("$@arenamembersnum"), i);
+	script_pushint(st,bg_id);
+	return true;
+}
+
+/**
+ * Joins the first player in the queue to the given team and warps him.
+ * @param Queue ID
+ * @param Battleground ID
+ * @param Spawn Map Name
+ * @param Spawn Map X Co-ordinate
+ * @param Spawn Map Y Co-ordinate
+ */
+BUILDIN(hBG_queue2team_single)
+{
+	const char* map_name;
+	struct hBG_queue_data *hBGqd;
+	struct map_session_data *sd;
+	int x, y, m, bg_id, q_id;
+
+	q_id = script_getnum(st,2);
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL || !hBGqd->first || !hBGqd->first->sd)
+		return true;
+
+	bg_id = script_getnum(st,3);
+	map_name = script_getstr(st,4);
+	if ((m = mapindex->name2id(map_name)) == 0)
+		return true; // Invalid Map
+	x = script_getnum(st,5);
+	y = script_getnum(st,6);
+	sd = hBGqd->first->sd;
+
+	if (hBG_team_join(bg_id,sd)) {
+		hBG_queue_member_remove(hBGqd, sd->bl.id);
+		pc->setpos(sd, m, x, y, CLR_TELEPORT);
+	}
+
+	return true;
+}
+/**
+ * Check if the given BG Queue can start a BG in the given mode.
+ * @param Queue ID
+ * @param Type
+ * @param Teams
+ * @param Required Minimum Players
+ * @return 1 can start, 0 cannot start.
+ */
+BUILDIN(hBG_queue_checkstart)
+{
+	int q_id, result = 0;
+	struct hBG_queue_data *hBGqd;
+
+	q_id = script_getnum(st,2);
+	if ((hBGqd = hBG_queue_search(q_id)) != NULL) {
+		int type, req_min, teams;
+
+		type = script_getnum(st,3);
+		teams = script_getnum(st,4);
+		req_min = script_getnum(st,5);
+
+		switch(type) {
+			case 0: // Lineal, as they Join
+			case 1: // Random
+			case 2: // Class Balance
+				if (hBGqd->users >= (req_min * teams))
+					result = 1;
+				break;
+			default:
+				result = 0;
+				break;
+		}
+	}
+
+	script_pushint(st,result);
+	return true;
+}
+
+/**
+ * Build BG Teams from one Queue
+ * @param Queue ID
+ * @param Minimum Players
+ * @param Maximum Players per Team
+ * @param Type
+ * @param ... Team ID
+ */
+BUILDIN(hBG_queue2teams)
+{ // Send Users from Queue to Teams. Requires previously created teams.
+	struct hBG_queue_data *hBGqd;
+	int i, j = 0, bg_id = 0, total_teams = 0, q_id, min, max, type, limit = 0, arg_offset = 6;
+	struct map_session_data *sd;
+
+	q_id = script_getnum(st,2); // Queue ID
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL) {
+		ShowError("script:hBG_queue2teams: Non existant queue id received %d.\n", q_id);
+		return true;
+	}
+
+	min = script_getnum(st,3); // Min Members per Team
+	max = script_getnum(st,4); // Max Members per Team
+	type = script_getnum(st,5); // Team Building Method
+
+	i = arg_offset; // Team ID's to build
+	while (script_hasdata(st,i) && i < MAX_BATTLEGROUND_TEAMS+arg_offset) {
+		bg_id = script_getnum(st,i);
+		if (bg->team_search(bg_id) == NULL) {
+			ShowError("script:hBG_queue2teams: Non existant team id received %d.\n", bg_id);
+			return true;
+		}
+		i++;
+	}
+	total_teams = i - arg_offset;
+
+	if (total_teams < 2) {
+		ShowError("script:hBG_queue2teams: Less than 2 teams received to build members.\n");
+		return true;
+	}
+	
+	// How many players are we going to take from the Queue
+	limit = min(max * total_teams, hBGqd->users);
+
+	switch(type) {
+		case 0: // Lineal - Maybe to keep party together
+			for(i = 0; i < limit; i++) {
+				if (i % max == 0) { // Switch Team
+					bg_id = script_getnum(st,j+arg_offset);
+				}
+
+				if (!hBGqd->first || (sd = hBGqd->first->sd) == NULL)
+					break; // No more people to join Teams
+
+				hBG_team_join(bg_id, sd);
+				hBG_queue_member_remove(hBGqd, sd->bl.id);
+				
+				// Increment Team counter or break
+				if (j++ >= total_teams)
+					break;
+			}
+			break;
+		case 1: // Random
+		{
+			int pos;
+			struct hBG_queue_member *qm;
+
+			for(i = 0; i < limit; i++) {
+				if (i % max == 0) { // Switch Team
+					bg_id = script_getnum(st,j+arg_offset);
+				}
+
+				pos = 1 + rand() % (limit - i);
+				
+				if ((qm = hBG_queue_member_get(hBGqd, pos)) == NULL || (sd = qm->sd) == NULL)
+					break;
+
+				hBG_team_join(bg_id, sd);
+				hBG_queue_member_remove(hBGqd, sd->bl.id);
+				
+				// Increment Team Counter or break
+				if (j++ >= total_teams)
+					break;
+			}
+		}
+			 break;
+	}
+
+	return true;
+}
+
+/**
+ * Fill teams with members from the given Queue.
+ * @param Queue ID
+ * @param Max Players Per Team
+ * @param ... Team ID
+ */
+BUILDIN(hBG_balance_teams)
+{
+	struct hBG_queue_data *hBGqd;
+	struct hBG_queue_member *head;
+	struct battleground_data *bgd, *p_bg;
+	int i, c, q_id, bg_id, m_bg_id = 0, max, min, type;
+	struct map_session_data *sd;
+	bool balanced;
+
+	q_id = script_getnum(st,2);
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL || hBGqd->users <= 0)
+		return true;
+
+	max = script_getnum(st,3);
+	if (max > MAX_BG_MEMBERS) max = MAX_BG_MEMBERS;
+	min = MAX_BG_MEMBERS + 1;
+	type = script_getnum(st,4);
+
+	i = 5; // Team IDs to build
+	
+	while (script_hasdata(st,i)) {
+		bg_id = script_getnum(st,i);
+		if ((bgd = bg->team_search(bg_id)) == NULL) {
+			ShowError("script:hBG_balance_teams: Non existant team id received %d.\n", bg_id);
+			return true;
+		}
+
+		if (bgd->count < min) min = bgd->count;
+		i++;
+	}
+
+	c = i - 5; // Teams Found
+	if (c < 2 || min >= max) return true; // No Balance Required
+
+	if (type < 3) {
+		while ((head = hBGqd->first) != NULL && (sd = head->sd) != NULL) {
+			p_bg = NULL;
+			balanced = true;
+			min = MAX_BG_MEMBERS + 1;
+
+			// Search the Current Minimum and Balance status
+			for(i = 0; i < c; i++) {
+				bg_id = script_getnum(st,i+5);
+				
+				if ((bgd = bg->team_search(bg_id)) == NULL)
+					break; // Should not happen. Teams already check
+				
+				if (p_bg && p_bg->count != bgd->count)
+					balanced = false; // Teams still with different member count
+
+				if (bgd->count < min) {
+					m_bg_id = bg_id;
+					min = bgd->count;
+				}
+				p_bg = bgd;
+			}
+
+			if (min >= max) break; // Balance completed
+
+			if (hBG_config_get("battle_configuration/hBG_balanced_queue") && balanced && hBGqd->users < c)
+				break; // No required users on queue to keep balance
+
+			hBG_team_join(m_bg_id, sd);
+			hBG_queue_member_remove(hBGqd, sd->bl.id);
+
+			if ((bgd = bg->team_search(m_bg_id)) != NULL && bgd->mapindex)
+				pc->setpos(sd, bgd->mapindex, bgd->x, bgd->y, CLR_OUTSIGHT); // Joins and Warps
+		}
+	}
+
+	return true;
+}
+
+/**
+ * Waiting Room to Battleground Teams
+ * @param Map Name
+ * @param Map X
+ * @param Map Y
+ * @param BG Guild Index
+ * @param Logout Event
+ * @param Die Event
+ */
+BUILDIN(hBG_waitingroom2bg)
+{
+	struct npc_data *nd;
+	struct chat_data *cd;
+	const char *map_name, *ev = "", *dev = "";
+	int x, y, i, m=0, guild_index, bg_id;
+	struct map_session_data *sd;
+
+	nd = (struct npc_data *)map->id2bl(st->oid);
+	if (nd == NULL || (cd = (struct chat_data *)map->id2bl(nd->chat_id)) == NULL) {
+		script_pushint(st,0);
+		return true;
+	}
+
+	map_name = script_getstr(st,2);
+	if (strcmp(map_name,"-") != 0 && (m = mapindex->name2id(map_name)) == 0) {
+		script_pushint(st,0);
+		return true;
+	}
+
+	x = script_getnum(st,3);
+	y = script_getnum(st,4);
+	guild_index = script_getnum(st,5);
+	ev = script_getstr(st,6); // Logout Event
+	dev = script_getstr(st,7); // Die Event
+
+	guild_index = cap_value(guild_index, 0, 12);
+	if ((bg_id = hBG_create(m, x, y, guild_index, ev, dev)) == 0) { // Creation failed
+		script_pushint(st,0);
+		return true;
+	}
+
+	for(i = 0; i < cd->users && i < MAX_BG_MEMBERS; i++) {
+		if ((sd = cd->usersd[i]) != NULL && hBG_team_join(bg_id, sd))
+			mapreg->setreg(reference_uid(script->add_str("$@arenamembers"), i), sd->bl.id);
+		else
+			mapreg->setreg(reference_uid(script->add_str("$@arenamembers"), i), 0);
+	}
+
+	mapreg->setreg(script->add_str("$@arenamembersnum"), i);
+	script_pushint(st,bg_id);
+	return true;
+}
+
+/**
+ * Adds the first player from the given NPC's
+ * waiting room to BG Team.
+ * @param Battleground Id
+ * @param Map Name
+ * @param Map X
+ * @param Map Y
+ * @param NPC Name
+ */
+BUILDIN(hBG_waitingroom2bg_single)
+{
+	const char* map_name;
+	struct npc_data *nd;
+	struct chat_data *cd;
+	struct map_session_data *sd;
+	int x, y, m, bg_id;
+
+	bg_id = script_getnum(st,2);
+	map_name = script_getstr(st,3);
+	if ((m = mapindex->name2id(map_name)) == 0)
+		return true; // Invalid Map
+
+	x = script_getnum(st,4);
+	y = script_getnum(st,5);
+	nd = npc->name2id(script_getstr(st,6));
+
+	if (nd == NULL || (cd = (struct chat_data *)map->id2bl(nd->chat_id)) == NULL || cd->users <= 0)
+		return true;
+
+	if ((sd = cd->usersd[0]) == NULL)
+		return true;
+
+	if (hBG_team_join(bg_id, sd)) {
+		pc->setpos(sd, m, x, y, CLR_TELEPORT);
+		script_pushint(st,1);
+	}
+	else
+		script_pushint(st,0);
+
+	return true;
+}
+
+/**
+ * Set the Respawn Location of a BG team
+ * @param Battleground Id
+ * @param Map X
+ * @param Map Y
+ */
+BUILDIN(hBG_team_setxy)
+{
+	struct battleground_data *bgd;
+	int bg_id;
+
+	bg_id = script_getnum(st,2);
+	if ((bgd = bg->team_search(bg_id)) == NULL)
+		return true;
+
+	bgd->x = script_getnum(st,3);
+	bgd->y = script_getnum(st,4);
+	return true;
+}
+
+/**
+ * Reveal the location of a BG Team on the minimap.
+ * @param Battleground ID
+ */
+BUILDIN(hBG_team_reveal)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+	int bg_id;
+
+	bg_id = script_getnum(st,2);
+	if ((bgd = bg->team_search(bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
+		return true;
+
+	hBGd->reveal_pos = true; // Reveal Position Mode
+	return true;
+}
+
+/**
+ * Conceal the location of a BG Team from the minimap.
+ * @param Battleground ID
+ */
+BUILDIN(hBG_team_conceal)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+	struct map_session_data *sd;
+	int bg_id,i=0;
+
+	bg_id = script_getnum(st,2);
+	if ((bgd = bg->team_search(bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
+		return true;
+
+	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+		if ((sd = bgd->members[i].sd) == NULL)
+			continue;
+		hBG_send_dot_remove(sd);
+	}
+
+	hBGd->reveal_pos = false; // Conceal Position Mode
+
+	return true;
+}
+
+/**
+ * Set Quest for a BG Team
+ * @param Battleground ID
+ * @param Quest ID
+ */
+BUILDIN(hBG_team_setquest)
+{
+	struct battleground_data *bgd;
+	struct map_session_data *sd;
+	int i, bg_id, qid;
+
+	bg_id = script_getnum(st,2);
+	qid = script_getnum(st,3);
+
+	if (bg_id == 0 || (bgd = bg->team_search(bg_id)) == NULL)
+		return true;
+
+	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+		if ((sd = bgd->members[i].sd) == NULL)
+			continue;
+
+		quest->add(sd,qid);
+	}
+	return true;
+}
+
+/**
+ * Set Viewpoint for a player.
+ * @see hBG_viewpointmap
+ */
+int hBG_viewpointmap_sub(struct block_list *bl, va_list ap)
+{
+	struct map_session_data *sd;
+	int npc_id, type, x, y, id, color;
+	npc_id = va_arg(ap,int);
+	type = va_arg(ap,int);
+	x = va_arg(ap,int);
+	y = va_arg(ap,int);
+	id = va_arg(ap,int);
+	color = va_arg(ap,int);
+	sd = (struct map_session_data *)bl;
+
+	clif->viewpoint(sd,npc_id,type,x,y,id,color);
+
+	return 0;
+}
+
+/**
+ * Set Viewpoint on minimap for a player.
+ * @param Map Name
+ * @param Type
+ *         0 = display mark for 15 seconds
+ *         1 = display mark until dead or teleported
+ *         2 = remove mark
+ * @param Map X
+ * @param Map Y
+ * @param ID (Unique ID of the viewpoint)
+ * @param Color
+ */
+BUILDIN(hBG_viewpointmap)
+{
+	int type,x,y,id,color,m;
+	const char *map_name;
+
+	map_name = script_getstr(st,2);
+	if ((m = map->mapname2mapid(map_name)) < 0)
+		return true; // Invalid Map
+
+	type=script_getnum(st,3);
+	x=script_getnum(st,4);
+	y=script_getnum(st,5);
+	id=script_getnum(st,6);
+	color=script_getnum(st,7);
+
+	map->foreachinmap(hBG_viewpointmap_sub,m,BL_PC,st->oid,type,x,y,id,color);
+
+	return true;
+}
+
+/**
+ * Reveal a monster's location on minimap
+ * @param Monster Id
+ * @param Type
+ *         0 = display mark for 15 seconds
+ *         1 = display mark until dead or teleported
+ *         2 = remove mark
+ * @param Color
+ */
+BUILDIN(hBG_monster_reveal)
+{
+	struct block_list *mbl;
+	int id = script_getnum(st,2),
+	flag = script_getnum(st,3),
+	color = script_getnum(st,4);
+
+	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB)
+		return true;
+
+	map->foreachinmap(hBG_viewpointmap_sub, mbl->m, BL_PC, st->oid, flag, mbl->x, mbl->y, mbl->id, color);
+
+	return true;
+}
+
+/**
+ * Set monster as an ally to a BG Team.
+ * @param Monster ID
+ * @param Battleground ID
+ */
+BUILDIN(hBG_monster_set_team)
+{
+	struct mob_data *md;
+	struct block_list *mbl;
+	int id = script_getnum(st,2),
+	bg_id = script_getnum(st,3);
+
+	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB)
+		return true;
+
+	md = (TBL_MOB *)mbl;
+	md->bg_id = bg_id;
+
+	mob_stop_attack(md);
+	mob_stop_walking(md, 0);
+
+	md->target_id = md->attacked_id = 0;
+
+	clif->charnameack(0, &md->bl);
+
+	return true;
+}
+
+/**
+ * Set immunity flag to a monster.
+ * (making it immune to damage).
+ * @param Monster ID
+ * @param Flag (0 = Off | 1 = On)
+ */
+BUILDIN(hBG_monster_immunity)
+{
+	struct mob_data *md;
+	struct block_list *mbl;
+	struct hBG_mob_data *hBGmd;
+
+	int id = script_getnum(st,2),
+	flag = script_getnum(st,3);
+
+	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB)
+		return true;
+
+	md = (TBL_MOB *)mbl;
+
+	if ((hBGmd = getFromMOBDATA(md, 0)) == NULL)
+		CREATE(hBGmd, struct hBG_mob_data, 1);
+
+	hBGmd->state.immunity = flag;
+
+	return true;
+}
+
+/**
+ * Leave a Battleground Team
+ */
+BUILDIN(hBG_leave)
+{
+	struct map_session_data *sd = script->rid2sd(st);
+
+	if (sd == NULL || !sd->bg_id)
+		return true;
+
+	hBG_team_leave(sd,0);
+
+	return true;
+}
+
+/**
+ * Finalize battlegrounds and remove
+ * teams from the db.
+ */
+BUILDIN(hBG_destroy)
+{
+	int bg_id = script_getnum(st,2);
+
+	hBG_team_finalize(bg_id, true);
+
+	return true;
+}
+
+/**
+ * Clean Battlegrounds without removing
+ * the teams from the db.
+ */
+BUILDIN(hBG_clean)
+{
+	int bg_id = script_getnum(st,2);
+	
+	hBG_team_finalize(bg_id, false);
+	
+	return true;
+}
+
+/**
+ * Get user count within an area in a map.
+ * @param Battleground ID
+ * @param Map Name
+ * @param X1
+ * @param Y1
+ * @param X2
+ * @param Y2
+ */
+BUILDIN(hBG_getareausers)
+{
+	struct battleground_data *bgd = NULL;
+	struct map_session_data *sd = NULL;
+	const char *map_name;
+	int m, x0, y0, x1, y1, bg_id;
+	int i = 0, c = 0;
+
+	bg_id = script_getnum(st,2);
+	map_name = script_getstr(st,3);
+
+	if ((bgd = bg->team_search(bg_id)) == NULL || (m = map->mapname2mapid(map_name)) < 0) {
+		script_pushint(st,0);
+		return true;
+	}
+
+	x0 = script_getnum(st,4);
+	y0 = script_getnum(st,5);
+	x1 = script_getnum(st,6);
+	y1 = script_getnum(st,7);
+
+	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+		if ((sd = bgd->members[i].sd) == NULL)
+			continue;
+		if (sd->bl.m != m || sd->bl.x < x0 || sd->bl.y < y0 || sd->bl.x > x1 || sd->bl.y > y1)
+			continue;
+		c++;
+	}
+
+	script_pushint(st,c);
+	
+	return true;
+}
+
+/**
+ * Update the score on a battleground map.
+ * @param Map Name
+ * @param Lion Score
+ * @param Eagle Score
+ */
+BUILDIN(hBG_updatescore)
+{
+	const char *map_name;
+	int m;
+
+	map_name = script_getstr(st,2);
+	if ((m = map->mapname2mapid(map_name)) < 0)
+		return true;
+
+	map->list[m].bgscore_lion = script_getnum(st,3);
+	map->list[m].bgscore_eagle = script_getnum(st,4);
+
+	clif->bg_updatescore(m);
+	return true;
+}
+
+/**
+ * Update Score for a Battleground Team.
+ * @param Battleground ID
+ * @param Score
+ */
+BUILDIN(hBG_update_score_team)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+
+	int bg_id = script_getnum(st,2),
+	score = script_getnum(st,3);
+
+	if ((bgd = bg->team_search(bg_id)) != NULL && (hBGd = getFromBGDATA(bgd, 0)) != NULL) {
+		hBGd->team_score = score;
+		hBG_update_score_team(bgd);
+	}
+
+	return true;
+}
+
+/**
+ * Get a Team's Guild Index
+ * @param Battleground ID
+ * @return Guild Index
+ */
+BUILDIN(hBG_get_team_gid)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+	int bg_id = script_getnum(st,2),
+
+	guild_id = 0;
+
+	if ((bgd = bg->team_search(bg_id)) != NULL
+		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL)
+		guild_id = hBGd->g->guild_id;
+
+	script_pushint(st, guild_id);
+
+	return true;
+}
+
+/**
+ * Get data from a Battleground
+ * @param Battleground ID
+ * @param Type
+ *         0 = User Count
+ *         1 = Fill $@bgmembers$ array with user list and return user count.
+ *         2 = BG Guild Name
+ *         3 = BG Guild Master Name
+ *         4 = BG Color
+ */
+BUILDIN(hBG_get_data)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+
+	int bg_id = script_getnum(st,2),
+
+	type = script_getnum(st,3);
+
+	if ((bgd = bg->team_search(bg_id)) == NULL
+		|| (hBGd = getFromBGDATA(bgd, 0)) == NULL) {
+		script_pushint(st,0);
+		return true;
+	}
+
+	switch (type)
+	{
+		case 0:
+			script_pushint(st, bgd->count);
+			break;
+		case 1: // Users and List
+		{
+			int i, j = 0;
+			struct map_session_data *sd;
+			for(i = 0; i < bgd->count; i++) {
+				if ((sd = bgd->members[i].sd) == NULL)
+					continue;
+				mapreg->setregstr(reference_uid(script->add_str("$@bgmembers$"),j),sd->status.name);
+				j++;
+			}
+			script_pushint(st, j);
+		}
+			break;
+		case 2:
+			script_pushconststr(st,hBGd->g ? hBGd->g->name : "null");
+			break;
+		case 3:
+			script_pushconststr(st,hBGd->g ? hBGd->g->master : "null");
+			break;
+		case 4:
+			script_pushint(st,hBGd->color);
+			break;
+
+		default:
+			ShowError("script:bg_get_data: unknown data identifier %d\n", type);
+			break;
+	}
+
+	return true;
+}
+
+/**
+ * Battleground Get Item
+ * @param Battleground ID
+ * @param Item ID
+ * @param Item Amount
+ */
+BUILDIN(hBG_getitem)
+{
+	int bg_id, nameid, amount;
+
+	bg_id = script_getnum(st,2);
+	nameid = script_getnum(st,3);
+	amount = script_getnum(st,4);
+
+	hBG_team_getitem(bg_id, nameid, amount);
+
+	return true;
+}
+
+/**
+ * Battleground Get Kafra Points
+ * @param Battleground ID
+ * @param Amount of KP
+ */
+BUILDIN(hBG_getkafrapoints)
+{
+	int bg_id, amount;
+
+	bg_id = script_getnum(st,2);
+	amount = script_getnum(st,3);
+
+	hBG_team_get_kafrapoints(bg_id, amount);
+	return true;
+}
+
+/**
+ * Battleground get Rewards
+ * @param Battleground ID
+ * @param Item ID
+ * @param Item Amount
+ * @param Kafra Points
+ * @param Quest ID
+ * @param Custom Variable (#KAFRAPOINTS/#CASHPOINTS etc..)
+ * @param Custom Variable Add Value
+ * @param Battleground Arena (0 EoS | 1 Boss | 2 TI | 3 CTF | 4 TD | 5 SC | 6 CON | 7 RUSH | 8 DOM)
+ * @param Battleground Result (0 Won | 1 Tie | 2 Lost)
+ */
+BUILDIN(hBG_reward)
+{
+	int bg_id, nameid, amount, kafrapoints, quest_id, add_value, bg_arena, bg_result;
+	const char *var;
+
+	bg_id = script_getnum(st,2);
+	nameid = script_getnum(st,3);
+	amount = script_getnum(st,4);
+	kafrapoints = script_getnum(st,5);
+	quest_id = script_getnum(st,6);
+	var = script_getstr(st,7);
+	add_value = script_getnum(st,8);
+	bg_arena = script_getnum(st,9);
+	bg_result = script_getnum(st,10);
+
+	bg_team_rewards(bg_id, nameid, amount, kafrapoints, quest_id, var, add_value, bg_arena, bg_result);
+	return true;
+}
+
+/**
+ * Add Item to XY co-ordinates on Floor.
+ * @param Map Name
+ * @param Map X
+ * @param Map Y
+ * @param Item ID
+ * @param Item Amount
+ */
+BUILDIN(hBG_flooritem2xy)
+{
+	struct item_data *item_data;
+	int nameid, amount, m, x, y;
+	const char *mapname;
+	
+	mapname = script_getstr(st,2);
+	
+	if ((m = map->mapname2mapid(mapname)) < 0)
+		return true;
+	
+	x = script_getnum(st,3);
+	y = script_getnum(st,4);
+	nameid = script_getnum(st,5);
+	
+	if ((item_data = itemdb->search(nameid)) == NULL)
+		return true;
+	
+	amount = script_getnum(st,6);
+	
+	if (amount < 1)
+		return true;
+	
+	hBG_addflooritem_area(NULL, m, x, y, nameid, amount);
+	
+	return true;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                     Function Pre-Hooks
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+void npc_parse_unknown_mapflag_pre(const char **name, const char **w3, const char **w4, const char **start, const char **buffer, const char **filepath, int **retval)
+{
+	int16 m = map->mapname2mapid(*name);
+
+	if (strcmpi(*w3, "hBG_topscore") == 0) {
+		struct hBG_mapflag *hBG_mf;
+
+		if ((hBG_mf = getFromMAPD(&map->list[m], 0)) == NULL) {
+			CREATE(hBG_mf, struct hBG_mapflag, 1);
+			hBG_mf->hBG_topscore = 1;
+			addToMAPD(&map->list[m], hBG_mf, 0, true);
+		}
+
+		hBG_mf->hBG_topscore = 1;
+
+		hookStop();
+	}
+
+	return;
+}
+
+void clif_charnameupdate_pre(struct map_session_data **sd)
+{
+	unsigned char buf[103];
+	int cmd = 0x195, ps;
+	struct battleground_data *bgd = bg->team_search((*sd)->bg_id);
+	struct hBG_data *hBGd;
+
+	nullpo_retv((*sd));
+
+	if ((*sd)->fakename[0] || bgd == NULL ||
+		(hBGd = getFromBGDATA(bgd, 0)) == NULL || hBGd->g == NULL)
+		return; //No need to update as the guild was not displayed anyway.
+
+	WBUFW(buf,0) = cmd;
+	WBUFL(buf,2) = (*sd)->bl.id;
+	memcpy(WBUFP(buf,6), (*sd)->status.name, NAME_LENGTH);
+	WBUFB(buf,30) = 0;
+	memcpy(WBUFP(buf,54), hBGd->g->name, NAME_LENGTH);
+	
+	ps = (hBGd->leader_char_id == (*sd)->status.char_id)?0:1;
+	memcpy(WBUFP(buf,78), hBGd->g->position[ps].name, NAME_LENGTH);
+
+	// Update nearby clients
+	clif->send(buf, 102, &(*sd)->bl, AREA);
+
+	hookStop();
+}
+
+
+int status_get_guild_id_pre(const struct block_list **bl)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+	int bg_id;
+
+	nullpo_ret((*bl));
+
+	if ((*bl)->type == BL_PC
+		&& (bg_id = bg->team_get_id((struct block_list *)(*bl))) > 0
+		&& (bgd = bg->team_search(bg_id)) != NULL
+		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
+		&& hBGd->g)
+	{
+		hookStop();
+		return hBGd->g->guild_id;
+	}
+
+	return 0;
+}
+
+int status_get_emblem_id_pre(const struct block_list **bl)
+{
+	struct battleground_data *bgd;
+	struct hBG_data *hBGd;
+	int bg_id;
+	nullpo_ret(bl);
+
+	if ((*bl)->type == BL_PC
+		&& (bg_id = bg->team_get_id((struct block_list *)(*bl))) > 0
+		&& (bgd = bg->team_search(bg_id)) != NULL
+		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL && hBGd->g)
+	{
+		hookStop();
+		return hBGd->g->emblem_id;
+	}
+
+	return 0;
+}
+
+// Cleanup on player Logout
+int map_quit_pre(struct map_session_data **sd)
+{
+	struct hBG_queue_data *hBGqd;
+	
+	nullpo_ret((*sd));
+	
+	// Only if player is logging out.
+	if (sockt->session[(*sd)->fd]->flag.eof && (hBGqd = getFromMSD((*sd), 0))) {
+		hBG_queue_member_remove(hBGqd, (*sd)->bl.id);
+	}
+	
+	return 0;
+}
+
+// Check if guild is null and don't run BCT checks if true.
+bool guild_isallied_pre(int *guild_id, int *guild_id2)
+{
+	struct guild *g = guild->search(*guild_id);
+	
+	if (g == NULL) {
+		hookStop();
+		return false;
+	}
+	
+	return false;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                     Function Post-Hooks
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+void clif_parse_LoadEndAck_post(int fd, struct map_session_data *sd)
+{
+	clif->charnameupdate(sd);
+	return;
+}
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                     Battle Configuration Parsing
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+void hBG_config_read(const char *key, const char *val)
+{
+	int value = config_switch(val);
+
+	if (strcmpi(key,"battle_configuration/hBG_enabled") == 0) {
+		if (value < 0 || value > 1) {
+			ShowWarning("Received Invalid Setting %d for hBG_enabled, defaulting to 0.\n", value);
+			return;
+		}
+		hBG_enabled = value;
+	} else if (strcmpi(key, "battle_configuration/hBG_from_town_only") == 0) {
+		if (value < 0 || value > 1) {
+			ShowWarning("Received Invalid Setting %d for hBG_from_town_only, defaulting to 0.\n", value);
+			return;
+		}
+		hBG_from_town_only = value;
+	} else if (strcmpi(key, "battle_configuration/hBG_ip_check") == 0) {
+		if (value < 0 || value > 1) {
+			ShowWarning("Received Invalid Setting %d for hBG_ip_check, defaulting to 0.\n", value);
+			return;
+		}
+		hBG_ip_check = value;
+	} else if (strcmpi(key, "battle_configuration/hBG_afk_announce") == 0) {
+		if (value < 0 || value > 1) {
+			ShowWarning("Received Invalid Setting %d for hBG_afk_announce, defaulting to 0.\n", value);
+			return;
+		}
+		hBG_afk_announce = value;
+	} else if (strcmpi(key, "battle_configuration/hBG_idle_autokick") == 0) {
+		if (value < 0) {
+			ShowWarning("Received Invalid Setting %d for hBG_idle_autokick, defaulting to 5 minutes (300s).\n", value);
+			hBG_idle_autokick = 300;
+		} else {
+			hBG_idle_autokick = value;
+		}
+	} else if (strcmpi(key, "battle_configuration/hBG_balanced_queue") == 0) {
+		if (value < 0 || value > 1) {
+			ShowWarning("Received Invalid Setting %d for hBG_balanced_queue, defaulting to 0.\n", value);
+			return;
+		}
+		hBG_balanced_queue = value;
+	} else if (strcmpi(key, "battle_configuration/hBG_reward_rates") == 0) {
+		if (value < 0) {
+			ShowWarning("Received invalid setting %d for hBG_reward_rates, defaulting to 100.\n", value);
+			hBG_reward_rates = 100;
+		} else {
+			hBG_reward_rates = value;
+		}
+	} else if (strcmpi(key, "battle_configuration/hBG_xy_interval") == 0) {
+		if (value < 0) {
+			ShowWarning("Received Invalid Setting %d for hBG_xy_interval, default to 1000ms. \n", value);
+			hBG_xy_interval = 1000;
+		} else {
+			hBG_xy_interval = value;
+		}
+	}
+}
+
+int hBG_config_get(const char *key)
+{
+	if (strcmpi(key, "battle_configuration/hBG_enabled") == 0)
+		return hBG_enabled;
+	else if (strcmpi(key, "battle_configuration/hBG_from_town_only") == 0)
+		return hBG_from_town_only;
+	else if (strcmpi(key, "battle_configuration/hBG_ip_check") == 0)
+		return hBG_ip_check;
+	else if (strcmpi(key, "battle_configuration/hBG_afk_announce") == 0)
+		return hBG_afk_announce;
+	else if (strcmpi(key, "battle_configuration/hBG_idle_autokick") == 0)
+		return hBG_idle_autokick;
+	else if (strcmpi(key, "battle_configuration/hBG_balanced_queue") == 0)
+		return hBG_balanced_queue;
+	else if (strcmpi(key, "battle_configuration/hBG_reward_rates") == 0)
+		return hBG_reward_rates;
+	else if (strcmpi(key, "battle_configuration/hBG_xy_interval") == 0)
+		return hBG_xy_interval;
+
+	return 0;
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                       Plugin Handling
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* run when server starts */
+HPExport void plugin_init (void)
+{
+	int interval = hBG_config_get("battle_configuration/hBG_xy_interval");
+	
+	if (SERVER_TYPE == SERVER_TYPE_MAP) {
+		
+		/* Function Pre-Hooks */
+		addHookPre(npc, parse_unknown_mapflag, npc_parse_unknown_mapflag_pre);
+		addHookPre(clif, charnameupdate, clif_charnameupdate_pre);
+		addHookPre(status, get_guild_id, status_get_guild_id_pre);
+		addHookPre(status, get_emblem_id, status_get_emblem_id_pre);
+		addHookPre(map, quit, map_quit_pre);
+		addHookPre(guild, isallied, guild_isallied_pre);
+		
+		/* Function Post-Hooks */
+		addHookPost(clif, pLoadEndAck, clif_parse_LoadEndAck_post);
+		
+		/* Script Commands */
+		addScriptCommand("hBG_team_create","siiiss", hBG_team_create);
+		addScriptCommand("hBG_queue_create","ss?", hBG_queue_create);
+		addScriptCommand("hBG_queue_event","is", hBG_queue_event);
+		addScriptCommand("hBG_queue_join","i", hBG_queue_join);
+		addScriptCommand("hBG_queue_partyjoin","ii", hBG_queue_partyjoin);
+		addScriptCommand("hBG_queue_leave","i", hBG_queue_leave);
+		addScriptCommand("hBG_queue_data","ii", hBG_queue_data);
+		addScriptCommand("hBG_queue2team","iisiiiss", hBG_queue2team);
+		addScriptCommand("hBG_queue2team_single","iisii", hBG_queue2team_single);
+		addScriptCommand("hBG_queue2teams","iiiiii*", hBG_queue2teams);
+		addScriptCommand("hBG_queue_checkstart","iiii", hBG_queue_checkstart);
+		addScriptCommand("hBG_balance_teams","iiiii*", hBG_balance_teams);
+		addScriptCommand("hBG_waitingroom2bg","siiiss", hBG_waitingroom2bg);
+		addScriptCommand("hBG_waitingroom2bg_single","isiis", hBG_waitingroom2bg_single);
+		addScriptCommand("hBG_team_setxy","iii", hBG_team_setxy);
+		addScriptCommand("hBG_team_reveal","i", hBG_team_reveal);
+		addScriptCommand("hBG_team_conceal","i", hBG_team_conceal);
+		addScriptCommand("hBG_team_setquest","ii", hBG_team_setquest);
+		addScriptCommand("hBG_viewpointmap","siiiii", hBG_viewpointmap);
+		addScriptCommand("hBG_monster_reveal","iii", hBG_monster_reveal);
+		addScriptCommand("hBG_monster_set_team","ii", hBG_monster_set_team);
+		addScriptCommand("hBG_monster_immunity","ii", hBG_monster_immunity);
+		addScriptCommand("hBG_leave","", hBG_leave);
+		addScriptCommand("hBG_destroy","i", hBG_destroy);
+		addScriptCommand("hBG_clean","i", hBG_clean);
+		addScriptCommand("hBG_get_data","ii", hBG_get_data);
+		addScriptCommand("hBG_getareausers","isiiii", hBG_getareausers);
+		addScriptCommand("hBG_updatescore","sii", hBG_updatescore);
+		addScriptCommand("hBG_team_updatescore", "ii", hBG_update_score_team);
+		addScriptCommand("hBG_team_guildid","i", hBG_get_team_gid);
+		addScriptCommand("hBG_getitem","iii", hBG_getitem);
+		addScriptCommand("hBG_getkafrapoints","ii", hBG_getkafrapoints);
+		addScriptCommand("hBG_reward","iiiiisiii", hBG_reward);
+		addScriptCommand("hBG_flooritem2xy", "siiii", hBG_flooritem2xy);
+	}
+
+	hBG_queue_db = idb_alloc(DB_OPT_RELEASE_DATA);
+
+	timer->add_func_list(hBG_send_xy_timer, "hBG_send_xy_timer");
+	
+	timer->add_interval(timer->gettick() + interval , hBG_send_xy_timer, 0, 0, interval);
+
+	hBG_build_guild_data();
+	ShowStatus("%s %s has been initialized [by Smokexyz].\n", pinfo.name, pinfo.version);
+}
+
+/* triggered when server starts loading, before any server-specific data is set */
+HPExport void server_preinit(void)
+{
+	addBattleConf("battle_configuration/hBG_enabled", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_from_town_only", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_ip_check", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_afk_announce", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_idle_autokick", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_balanced_queue", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_reward_rates", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_xy_interval", hBG_config_read, hBG_config_get, true);
+}
+
+/* run when server is ready (online) */
+HPExport void server_online (void)
+{
+}
+
+static int queue_db_final(union DBKey key, struct DBData *data, va_list ap)
+{
+	struct hBG_queue_data *hBGqd = DB->data2ptr(data);
+	
+	if (hBGqd) {
+		ShowDebug("id %d\n", hBGqd->q_id);
+		hBG_queue_members_finalize(hBGqd); // Unlink all queue members
+	}
+	
+	return 0;
+}
+
+/* run when server is shutting down */
+HPExport void plugin_final (void)
+{
+	hBG_queue_db->destroy(hBG_queue_db, queue_db_final);
+	ShowInfo ("%s %s has been finalized [by Smokexyz].\n",pinfo.name, pinfo.version);
+}
