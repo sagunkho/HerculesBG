@@ -399,7 +399,7 @@ void hBG_send_guild_member_list(struct map_session_data *sd)
 		WFIFOW(fd,c*104+12) = psd->status.hair;
 		WFIFOW(fd,c*104+14) = psd->status.hair_color;
 		WFIFOW(fd,c*104+16) = psd->status.sex;
-		WFIFOW(fd,c*104+18) = psd->status.class_;
+		WFIFOW(fd,c*104+18) = psd->status.class;
 		WFIFOW(fd,c*104+20) = psd->status.base_level;
 		WFIFOL(fd,c*104+22) = hBGsd->bg_kills; // Exp slot used to show kills
 		WFIFOL(fd,c*104+26) = 1; // Online
