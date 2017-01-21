@@ -6,7 +6,7 @@
  * \ \| '_ ` _ \ / _ \| |/ / _ \ \/ / | | |_  /
  * _\ \ | | | | | (_) |   <  __/>  <| |_| |/ /
  * \__/_| |_| |_|\___/|_|\_\___/_/\_\\__, /___|
- *                                   |___/
+ *								     |___/
  * Copyright (c) 2016 Smokexyz.
  * All rights reserved.
  *
@@ -20,8 +20,8 @@
 #include "common/socket.h"
 #include "common/strlib.h"
 #include "common/nullpo.h"
-#include "common/utils.h"
 #include "common/timer.h"
+#include "common/utils.h"
 
 #include "map/clif.h"
 #include "map/pc.h"
@@ -38,6 +38,8 @@
 #include "map/homunculus.h"
 #include "map/mercenary.h"
 #include "map/elemental.h"
+#include "map/skill.h"
+#include "map/battleground.h"
 
 #include "plugins/HPMHooking.h" /* Hooking Macros */
 #include "common/HPMDataCheck.h" /* should always be the last Hercules file included! */
@@ -56,7 +58,6 @@ HPExport struct hplugin_info pinfo = {
 	"0.1",       // Plugin version
 	HPM_VERSION, // HPM Version (automatically updated)
 };
-
 
 /**
  * Global Variable Delcarations.
@@ -88,7 +89,7 @@ struct hBG_queue_member {
 };
 
 /**
- * MSD Structure Appendant
+ * MSD Structure Appendant (class 0)
  */
 struct hBG_queue_data {
 	unsigned int q_id, users, min_level;
@@ -97,7 +98,7 @@ struct hBG_queue_data {
 };
 
 /**
- * MSD Structure Appendant
+ * MSD Structure Appendant (class 1)
  */
 struct hBG_map_session_data {
 	unsigned int bg_kills;
@@ -295,6 +296,45 @@ void hBG_send_guild_info(struct map_session_data *sd)
 	WFIFOSET(fd,  packet->len);
 }
 
+/// Sends guild skills (ZC_GUILD_SKILLINFO).
+/// 0162 <packet len>.W <skill points>.W { <skill id>.W <type>.L <level>.W <sp cost>.W <atk range>.W <skill name>.24B <upgradeable>.B }*
+void hBG_send_guild_skillinfo(struct map_session_data* sd)
+{
+	int fd;
+	struct guild* g;
+	int i,c;
+	
+	nullpo_retv(sd);
+	
+	if (!sd->bg_id || (g = hBG_get_guild(sd->bg_id)) == NULL)
+		return;
+	
+	fd = sd->fd;
+	WFIFOHEAD(fd, 6 + MAX_GUILDSKILL*37);
+	WFIFOW(fd,0) = 0x0162;
+	WFIFOW(fd,4) = g->skill_point;
+	for(i = 0, c = 0; i < MAX_GUILDSKILL; i++) {
+		if(g->skill[i].id > 0 && guild->check_skill_require(g, g->skill[i].id)) {
+			int id = g->skill[i].id;
+			int p = 6 + c*37;
+			WFIFOW(fd,p+0) = id;
+			WFIFOL(fd,p+2) = skill->get_inf(id);
+			WFIFOW(fd,p+6) = g->skill[i].lv;
+			if ( g->skill[i].lv ) {
+				WFIFOW(fd, p + 8) = skill->get_sp(id, g->skill[i].lv);
+				WFIFOW(fd, p + 10) = skill->get_range(id, g->skill[i].lv);
+			} else {
+				WFIFOW(fd, p + 8) = 0;
+				WFIFOW(fd, p + 10) = 0;
+			}
+			safestrncpy(WFIFOP(fd,p+12), skill->get_name(id), NAME_LENGTH);
+			WFIFOB(fd,p+36)= (g->skill[i].lv < guild->skill_get_max(id) && sd == g->member[0].sd) ? 1 : 0;
+			c++;
+		}
+	}
+	WFIFOW(fd,2) = 6 + c*37;
+	WFIFOSET(fd,WFIFOW(fd,2));
+}
 
 /**
  * Sends Guild Window Information
@@ -302,7 +342,8 @@ void hBG_send_guild_info(struct map_session_data *sd)
  * @param sd map_session_data to send the packet to.
  * @return void
  */
-void hBG_guild_window_info(struct map_session_data *sd) {
+void hBG_guild_window_info(struct map_session_data *sd)
+{
 	int fd;
 	int cmd = 0x1b6;
 	struct guild *g;
@@ -512,7 +553,8 @@ void hBG_send_expulsion(struct map_session_data *sd, const char *name, const cha
  * @param sd map_session_data to send the packet to
  * @return void
  */
-void hBG_update_score_single(struct map_session_data *sd) {
+void hBG_update_score_single(struct map_session_data *sd)
+{
 	int fd;
 	int cmd = 0x2de;
 	struct battleground_data *bgd;
@@ -746,7 +788,6 @@ int hBG_queue_member_remove(struct hBG_queue_data *hBGqd, int id)
 			
 			hBGqd->users--;
 			
-			
 			// De-attach target from the main queue
 			if (previous) {
 				previous->next = head->next;
@@ -830,7 +871,7 @@ int hBG_queue_join(struct map_session_data *sd, int q_id)
 		clif->message(sd->fd, output);
 		return 0;
 	} else if (hBGqd && hBGqd->min_level && sd->status.base_level < hBGqd->min_level) {
-		sprintf(output,"You cannot join %s queue. Required min level is %d.", hBGqd->queue_name, hBGqd->min_level);
+		sprintf(output,"You cannot join %s queue. Required min level is %ud.", hBGqd->queue_name, hBGqd->min_level);
 		clif->message(sd->fd,output);
 		return 0;
 	} else if (hBG_config_get("battle_configuration/hBG_ip_check") && hBG_countlogin(sd,false) > 0) {
@@ -1021,9 +1062,10 @@ int hBG_team_join(int bg_id, struct map_session_data *sd)
 			continue;
 
 		// Simulate Guild Information
-		hBG_guild_window_info(pl_sd);
-		hBG_send_emblem(pl_sd, hBGd->g);
-		hBG_send_guild_member_list(pl_sd);
+		hBG_guild_window_info(pl_sd); // Main Guild window information.
+		hBG_send_emblem(pl_sd, hBGd->g); // Emblems
+		hBG_send_guild_member_list(pl_sd); // Member list
+		hBG_send_guild_skillinfo(sd); // Send Guild skill information.
 
 		if (pl_sd != sd)
 			hBG_send_hp_single(sd->fd,pl_sd);
@@ -1095,7 +1137,9 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 	struct map_session_data *pl_sd;
 	struct guild *g;
 
-	if (sd == NULL || !sd->bg_id)
+	nullpo_ret(sd);
+	
+	if (!sd->bg_id)
 		return 0;
 	else if ((hBGsd = getFromMSD(sd, 1)) == NULL)
 		return 0;
@@ -1108,8 +1152,9 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 		npc->event(sd, bgd->logout_event, 0);
 
 	// Packets
-	hBG_send_leave_single(sd, sd->status.name, "Leaving Battle...");
 	hBG_send_dot_remove(sd);
+	
+	// Reset information.
 	sd->bg_id = 0;
 	hBGsd->bg_kills = 0;
 	
@@ -1131,8 +1176,6 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 
 	clif->charnameupdate(sd);
 	clif->guild_emblem_area(&sd->bl);
-
-	if (!bgd) return 0;
 
 	ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd == sd);
 
@@ -1471,16 +1514,16 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 	for(i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((sd = bgd->members[i].sd) == NULL)
 			continue;
-
-		ShowDebug("idletime %d\n",DIFF_TICK(sockt->last_tick, sd->idletime));
 		
 		if (hBG_config_get("battle_configuration/hBG_idle_autokick")
 		   && DIFF_TICK(sockt->last_tick, sd->idletime) >= hBG_config_get("battle_configuration/hBG_idle_autokick")
-		   && hBGd->g) {
-			sprintf(output, "- AFK [%s] Kicked -", sd->status.name);
+		   && hBGd->g
+			&& map->list[sd->bl.m].flag.battleground) {
+			sprintf(output, "[AFK Check] %s has been kicked.", sd->status.name);
 			clif->broadcast2(&sd->bl, output, (int)strlen(output)+1, hBGd->color, 0x190, 20, 0, 0, BG);
 
 			hBG_team_leave(sd,3);
+			
 			clif->message(sd->fd, "You have been kicked from Battleground because of your AFK status.");
 			pc->setpos(sd,sd->status.save_point.map,sd->status.save_point.x,sd->status.save_point.y,3);
 			continue;
@@ -1507,6 +1550,7 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 
 /**
  * Timer function for revealing/hiding mini map positions.
+ * Also handles player AFK time.
  * @see hBG_send_xy_timer_sub
  */
 int hBG_send_xy_timer(int tid, int64 tick, int id, intptr_t data)
@@ -1921,7 +1965,8 @@ BUILDIN(hBG_queue_checkstart)
 BUILDIN(hBG_queue2teams)
 { // Send Users from Queue to Teams. Requires previously created teams.
 	struct hBG_queue_data *hBGqd;
-	int i, j = 0, bg_id = 0, total_teams = 0, q_id, min, max, type, limit = 0, arg_offset = 6;
+	int t, bg_id = 0, total_teams = 0, q_id, min, max, type, limit = 0;
+	int arg_offset = 6;
 	struct map_session_data *sd;
 
 	q_id = script_getnum(st,2); // Queue ID
@@ -1934,16 +1979,16 @@ BUILDIN(hBG_queue2teams)
 	max = script_getnum(st,4); // Max Members per Team
 	type = script_getnum(st,5); // Team Building Method
 
-	i = arg_offset; // Team ID's to build
-	while (script_hasdata(st,i) && i < MAX_BATTLEGROUND_TEAMS+arg_offset) {
-		bg_id = script_getnum(st,i);
+	t = arg_offset; // Team ID's to build
+	while (script_hasdata(st,t) && t < MAX_BATTLEGROUND_TEAMS+arg_offset) {
+		bg_id = script_getnum(st,t);
 		if (bg->team_search(bg_id) == NULL) {
 			ShowError("script:hBG_queue2teams: Non existant team id received %d.\n", bg_id);
 			return true;
 		}
-		i++;
+		t++;
 	}
-	total_teams = i - arg_offset;
+	total_teams = t - arg_offset;
 
 	if (total_teams < 2) {
 		ShowError("script:hBG_queue2teams: Less than 2 teams received to build members.\n");
@@ -1955,31 +2000,34 @@ BUILDIN(hBG_queue2teams)
 
 	switch(type) {
 		case 0: // Lineal - Maybe to keep party together
+		{
+			t = 0;
+			int i = 0;
 			for(i = 0; i < limit; i++) {
-				if (i % max == 0) { // Switch Team
-					bg_id = script_getnum(st,j+arg_offset);
-				}
-
+				if (i % max == 0) // Switch Team
+					bg_id = script_getnum(st,t+arg_offset);
+				
 				if (!hBGqd->first || (sd = hBGqd->first->sd) == NULL)
 					break; // No more people to join Teams
-
+				
 				hBG_team_join(bg_id, sd);
 				hBG_queue_member_remove(hBGqd, sd->bl.id);
 				
 				// Increment Team counter or break
-				if (j++ >= total_teams)
+				if (t++ >= total_teams)
 					break;
 			}
+		}
 			break;
 		case 1: // Random
 		{
-			int pos;
+			t = 0;
+			int pos = 0, i=0;
 			struct hBG_queue_member *qm;
 
-			for(i = 0; i < limit; i++) {
-				if (i % max == 0) { // Switch Team
-					bg_id = script_getnum(st,j+arg_offset);
-				}
+			for(i=0; t < limit; i++) {
+				if (i % max == 0) // Switch Team
+					bg_id = script_getnum(st,t+arg_offset);
 
 				pos = 1 + rand() % (limit - i);
 				
@@ -1990,7 +2038,7 @@ BUILDIN(hBG_queue2teams)
 				hBG_queue_member_remove(hBGqd, sd->bl.id);
 				
 				// Increment Team Counter or break
-				if (j++ >= total_teams)
+				if (t++ >= total_teams)
 					break;
 			}
 		}
@@ -2471,7 +2519,7 @@ BUILDIN(hBG_getareausers)
 	for(i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((sd = bgd->members[i].sd) == NULL)
 			continue;
-		if (sd->bl.m != m || sd->bl.x < x0 || sd->bl.y < y0 || sd->bl.x > x1 || sd->bl.y > y1)
+		else if (sd->bl.m != m || sd->bl.x < x0 || sd->bl.y < y0 || sd->bl.x > x1 || sd->bl.y > y1)
 			continue;
 		c++;
 	}
@@ -2714,6 +2762,9 @@ BUILDIN(hBG_flooritem2xy)
  *                     Function Pre-Hooks
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/**
+ * NPC Pre-Hooks
+ */
 void npc_parse_unknown_mapflag_pre(const char **name, const char **w3, const char **w4, const char **start, const char **buffer, const char **filepath, int **retval)
 {
 	int16 m = map->mapname2mapid(*name);
@@ -2735,6 +2786,9 @@ void npc_parse_unknown_mapflag_pre(const char **name, const char **w3, const cha
 	return;
 }
 
+/**
+ * Clif Pre-Hooks
+ */
 void clif_charnameupdate_pre(struct map_session_data **sd)
 {
 	unsigned char buf[103];
@@ -2763,7 +2817,145 @@ void clif_charnameupdate_pre(struct map_session_data **sd)
 	hookStop();
 }
 
+/**
+ * Skill Pre-Hooks.
+ */
+int skill_check_condition_castbegin_pre(struct map_session_data **sd, uint16 *skill_id, uint16 *skill_lv)
+{
+	struct status_data *st;
+	struct status_change *sc;
+	struct skill_condition require;
+	
+	nullpo_ret(sd);
+	
+	if (!map->list[(*sd)->bl.m].flag.battleground || !(*skill_id >= GD_SKILLBASE && *skill_id <= GD_DEVELOPMENT))
+		return 1;
+	
+	st = &(*sd)->battle_status;
+	sc = &(*sd)->sc;
+	
+	if( !sc->count )
+		sc = NULL;
+	
+	if( pc_is90overweight((*sd)) ) {
+		clif->skill_fail((*sd), *skill_id, USESKILL_FAIL_WEIGHTOVER, 0);
+		return 0;
+	}
+	
+	if( sc && ( sc->data[SC__SHADOWFORM] || sc->data[SC__IGNORANCE] ) )
+		return 0;
+	
+	if (pc_isridingwug((*sd))) {
+		int ret = skill->check_condition_castbegin_mount_unknown(sc, &(*skill_id));
+		if (ret >= 0)
+			return ret;
+	} else if (pc_ismadogear((*sd))) {
+		int ret = skill->check_condition_castbegin_madogear_unknown(sc, &(*skill_id));
+		if (ret >= 0)
+			return ret;
+	}
+	
+	if( *skill_lv < 1 || *skill_lv > MAX_SKILL_LEVEL )
+		return 0;
+	
+	require = skill->get_requirement((*sd), *skill_id, *skill_lv);
+	
+	/* @TODO get_percentage function.
+	if (require.mhp > 0 && get_percentage(st->hp, st->max_hp) > require.mhp) {
+		//mhp is the max-hp-requirement, that is,
+		//you must have this % or less of HP to cast it.
+		clif->skill_fail((*sd), *skill_id, USESKILL_FAIL_HP_INSUFFICIENT, 0);
+		return 0;
+	}*/
+	
+	if( require.weapon && !pc_check_weapontype((*sd), require.weapon) ) {
+		clif->skill_fail((*sd), *skill_id, USESKILL_FAIL_THIS_WEAPON, 0);
+		return 0;
+	}
+	
+	if( require.sp > 0 && st->sp < (unsigned int)require.sp) {
+		clif->skill_fail((*sd), *skill_id, USESKILL_FAIL_SP_INSUFFICIENT, 0);
+		return 0;
+	}
+	
+	if( require.zeny > 0 && (*sd)->status.zeny < require.zeny ) {
+		clif->skill_fail((*sd), *skill_id, USESKILL_FAIL_MONEY, 0);
+		return 0;
+	}
+	
+	if( require.spiritball > 0 && (*sd)->spiritball < require.spiritball) {
+		clif->skill_fail((*sd), *skill_id, USESKILL_FAIL_SPIRITS, require.spiritball);
+		return 0;
+	}
+	
+	// Prevent original function from running after return from here.
+	hookStop();
+	
+	return 1;
+}
 
+int skillnotok_pre (uint16 *skill_id, struct map_session_data **sd)
+{
+	if (map->list[(*sd)->bl.m].flag.battleground && *skill_id >= GD_SKILLBASE && *skill_id <= GD_DEVELOPMENT)
+		hookStop();
+	
+	return 0;
+}
+
+/**
+ * Skill cast end.
+ * @param src = source block list.
+ * @param bl = target block list
+ */
+int skill_castend_nodamage_id_pre (struct block_list **src, struct block_list **bl, uint16 *skill_id, uint16 *skill_lv, int64 *tick, int *flag)
+{
+	enum sc_type type;
+	struct map_session_data *sd, *dstsd;
+	
+	nullpo_retr(1, bl);
+	nullpo_retr(1, src);
+	
+	sd = BL_CAST(BL_PC, *src);
+	dstsd = BL_CAST(BL_PC, *bl);
+	
+	if (!map->list[(*src)->m].flag.battleground || !(*skill_id >= GD_SKILLBASE && *skill_id <= GD_DEVELOPMENT))
+		return 0;
+	
+	type = status->skill2sc(*skill_id);
+	
+	switch(*skill_id) {
+		case GD_EMERGENCYCALL:
+		{
+			int dx[9]={-1, 1, 0, 0,-1, 1,-1, 1, 0};
+			int dy[9]={ 0, 0, 1,-1, 1,-1,-1, 1, 0};
+			int i, j = 0;
+			struct guild *g;
+			
+			// i don't know if it actually summons in a circle, but oh well. ;P
+			if (sd && (g = hBG_get_guild((status->get_guild_id(*src)))) != NULL) {
+				clif->skill_nodamage(*src, *bl, *skill_id, *skill_lv, 1);
+				
+				for(i = 0; i < g->max_member; i++, j++) {
+					if (j>8) j=0;
+					if ((dstsd = g->member[i].sd) != NULL && sd != dstsd && !dstsd->state.autotrade && !pc_isdead(dstsd)) {
+						if (map->getcell((*src)->m, *src, (*src)->x + dx[j], (*src)->y + dy[j], CELL_CHKNOREACH))
+							dx[j] = dy[j] = 0;
+						pc->setpos(dstsd, map_id2index((*src)->m), (*src)->x+dx[j], (*src)->y+dy[j], CLR_RESPAWN);
+					}
+				}
+				guild->block_skill(sd, skill->get_time2(*skill_id, *skill_lv));
+			}
+		}
+			break;
+	}
+	
+	hookStop();
+	return 0;
+}
+
+/**
+ * Status Pre-Hooks
+ */
 int status_get_guild_id_pre(const struct block_list **bl)
 {
 	struct battleground_data *bgd;
@@ -2790,6 +2982,7 @@ int status_get_emblem_id_pre(const struct block_list **bl)
 	struct battleground_data *bgd;
 	struct hBG_data *hBGd;
 	int bg_id;
+	
 	nullpo_ret(bl);
 
 	if ((*bl)->type == BL_PC
@@ -2804,21 +2997,52 @@ int status_get_emblem_id_pre(const struct block_list **bl)
 	return 0;
 }
 
+/**
+ * Battleground Pre-Hooks
+ */
+int bg_team_leave_pre(struct map_session_data **sd, enum bg_team_leave_type *flag)
+{
+	struct hBG_data *hBGd;
+	struct battleground_data *bgd;
+	
+	nullpo_ret(sd);
+	
+	if ((bgd = bg->team_search((*sd)->bg_id)) != NULL
+		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL)
+		hookStop();
+	
+	return 0;
+}
+
+/**
+ * Map Pre-Hooks
+ */
 // Cleanup on player Logout
 int map_quit_pre(struct map_session_data **sd)
 {
 	struct hBG_queue_data *hBGqd;
+	struct battleground_data *bgd = NULL;
+	struct hBG_data *hBGd = NULL;
 	
 	nullpo_ret((*sd));
 	
 	// Only if player is logging out.
 	if (sockt->session[(*sd)->fd]->flag.eof && (hBGqd = getFromMSD((*sd), 0))) {
-		hBG_queue_member_remove(hBGqd, (*sd)->bl.id);
+		if (hBG_queue_member_search(hBGqd, (*sd)->bl.id)) {
+			hBG_queue_member_remove(hBGqd, (*sd)->bl.id);
+		} else if ((*sd)->bg_id
+		   && (bgd = bg->team_search((*sd)->bg_id)) != NULL
+		   && (hBGd = getFromBGDATA(bgd, 0)) != NULL) {
+		   hBG_team_leave(*sd, 0);
+	   }
 	}
 	
 	return 0;
 }
 
+/**
+ * Guild Pre-Hooks
+ */
 // Check if guild is null and don't run BCT checks if true.
 bool guild_isallied_pre(int *guild_id, int *guild_id2)
 {
@@ -2838,12 +3062,14 @@ bool guild_isallied_pre(int *guild_id, int *guild_id2)
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+/**
+ * Clif Post-Hooks
+ */
 void clif_parse_LoadEndAck_post(int fd, struct map_session_data *sd)
 {
 	clif->charnameupdate(sd);
 	return;
 }
-
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -2949,6 +3175,10 @@ HPExport void plugin_init (void)
 		addHookPre(status, get_emblem_id, status_get_emblem_id_pre);
 		addHookPre(map, quit, map_quit_pre);
 		addHookPre(guild, isallied, guild_isallied_pre);
+		addHookPre(skill, check_condition_castbegin, skill_check_condition_castbegin_pre);
+		addHookPre(skill, not_ok, skillnotok_pre);
+		addHookPre(skill, castend_nodamage_id, skill_castend_nodamage_id_pre);
+		addHookPre(bg, team_leave, bg_team_leave_pre);
 		
 		/* Function Post-Hooks */
 		addHookPost(clif, pLoadEndAck, clif_parse_LoadEndAck_post);
@@ -3022,10 +3252,8 @@ static int queue_db_final(union DBKey key, struct DBData *data, va_list ap)
 {
 	struct hBG_queue_data *hBGqd = DB->data2ptr(data);
 	
-	if (hBGqd) {
-		ShowDebug("id %d\n", hBGqd->q_id);
+	if (hBGqd)
 		hBG_queue_members_finalize(hBGqd); // Unlink all queue members
-	}
 	
 	return 0;
 }

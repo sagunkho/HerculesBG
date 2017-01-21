@@ -41,7 +41,7 @@ OnInit:
 	// Battleground announcement colors.
 	setarray .BG_Color$[0],        "0x2F9F2D",       "0xAA00FF",        "0xFF0033",    "0x33FF99",   "0x3399FF",  "0xFFA500",    "0x9ACD32",    "0x4169E1",   "0xDDA0DD";
 
-	// Team Building Mode : 0 = Lineal, 1 = Random, 2 = Balanced
+	// Team Building Mode : 0 = Lineal, 1 = Random
 	set .TeamBuildingMode, 1;
 
 	// Battleground @commands (@joinbg, @leavebg).
