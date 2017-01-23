@@ -5,10 +5,13 @@ This project is a full conversion and enhancement of eAmod's Battlegrounds 2.0 s
 - HerculesWS/Hercules.git emulation software.
 
 #### Installation
-1) Place plugin files in plugin directory. (If you wish to re-compile the code, please do so the standard way.)
-2) Place all script files in the default directory provided in the repository (or your own).
-3) Place all database and config parts in their respective files.
-4) in conf/plugins.conf add "hBG".
+1. Place plugin files in plugin directory. 
+- (How to re-compile plugins: [Hercules Plugin Compilation Guide] (http://herc.ws/wiki/HPM#Building_a_plugin)).
+2. Place all script files in the default directory provided in the repository (or your own).
+3. Place all database and config parts in their respective files.
+4. in conf/plugins.conf add "hBG".
+5. Start your server.
+
 
 #### Contributors
 [Smokexyz](https://github.com/Smokexyz) / [sagunkho](https://github.com/sagunkho)
