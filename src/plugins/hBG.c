@@ -163,10 +163,10 @@ int hBG_afk_announce,
 /**
  * Forward Declarations of certain global-scoped functions.
  */
-int hBG_countlogin(struct map_session_data */*sd*/, bool /*check_bat_room*/);
-int hBG_config_get(const char */*key*/);
-struct guild* hBG_get_guild(int /*bg_id*/);
-struct map_session_data* hBG_getavailablesd(struct battleground_data */*bgd*/);
+int hBG_countlogin(struct map_session_data *sd, bool check_bat_room);
+int hBG_config_get(const char *key);
+struct guild* hBG_get_guild(int bg_id);
+struct map_session_data* hBG_getavailablesd(struct battleground_data *bgd);
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -2013,7 +2013,7 @@ BUILDIN(hBG_queue2teams)
 			t = 0;
 			int i = 0;
 			for(i = 0; i < limit; i++) {
-				if (i % limit/total_teams == 0) // Switch Team
+				if ((i%(limit/total_teams)) == 0) // Switch Team
 					bg_id = script_getnum(st,t+arg_offset);
 				
 				if (!hBGqd->first || (sd = hBGqd->first->sd) == NULL)
@@ -2035,7 +2035,7 @@ BUILDIN(hBG_queue2teams)
 			struct hBG_queue_member *qm;
 
 			for(i=0; t < limit; i++) {
-				if (i % limit/total_teams == 0) // Switch Team
+				if ((i%(limit/total_teams)) == 0) // Switch Team
 					bg_id = script_getnum(st,t+arg_offset);
 
 				pos = 1 + rand() % (limit - i);
