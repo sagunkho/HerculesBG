@@ -15,6 +15,7 @@ This project is a full conversion and enhancement of eAmod's Battlegrounds 2.0 s
 
 #### Contributors
 [Smokexyz](https://github.com/Smokexyz) / [sagunkho](https://github.com/sagunkho)
+[![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=NZP4VCYY9RP4U)
 
 #### Documentation
 ##### Available Battleground Modes
