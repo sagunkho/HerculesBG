@@ -1387,7 +1387,7 @@ void bg_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int que
 		if ((sd = bgd->members[j].sd) == NULL)
 			continue;
 
-		if (quest_id) quest->add(sd,quest_id);
+		if (quest_id) quest->add(sd, quest_id);
 		pc_setglobalreg(sd, script->add_str(var), pc_readglobalreg(sd,script->add_str(var)) + add_value);
 
 		if (kafrapoints > 0) {
@@ -2768,7 +2768,15 @@ BUILDIN(hBG_flooritem2xy)
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *                     Function Pre-Hooks
+ *                     Char Server Function Post-Hooks
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/**
+ * Char Post-Hooks
+ */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                     Map Server Function Pre-Hooks
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**
@@ -2854,7 +2862,6 @@ int skillnotok_pre(uint16 *skill_id, struct map_session_data **sd)
  */
 int skill_castend_nodamage_id_pre(struct block_list **src, struct block_list **bl, uint16 *skill_id, uint16 *skill_lv, int64 *tick, int *flag)
 {
-	enum sc_type type;
 	struct map_session_data *sd, *dstsd;
 	
 	nullpo_retr(1, bl);
@@ -2866,14 +2873,12 @@ int skill_castend_nodamage_id_pre(struct block_list **src, struct block_list **b
 	if (!map->list[(*src)->m].flag.battleground || *skill_id != GD_EMERGENCYCALL)
 		return 0;
 	
-	type = status->skill2sc(*skill_id);
-	
 	switch(*skill_id) {
 		case GD_EMERGENCYCALL:
 		{
 			int dx[9]={-1, 1, 0, 0,-1, 1,-1, 1, 0};
 			int dy[9]={ 0, 0, 1,-1, 1,-1,-1, 1, 0};
-			int i, j = 0;
+			int i = 0, j = 0;
 			struct guild *g;
 			
 			// i don't know if it actually summons in a circle, but oh well. ;P
@@ -2910,7 +2915,7 @@ int status_get_guild_id_pre(const struct block_list **bl)
 	nullpo_ret((*bl));
 
 	if ((*bl)->type == BL_PC
-		&& (bg_id = bg->team_get_id((const struct block_list *)*bl)) > 0
+		&& (bg_id = bg->team_get_id((struct block_list *)*bl)) > 0
 		&& (bgd = bg->team_search(bg_id)) != NULL
 		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
 		&& hBGd->g)
@@ -3003,7 +3008,7 @@ bool guild_isallied_pre(int *guild_id, int *guild_id2)
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *                     Function Post-Hooks
+ *                     Map Server Function Post-Hooks
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 

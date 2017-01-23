@@ -75,5 +75,8 @@ hBG_flooritem2xy
 @leavebg - leave a bg queue.
 ````
 
+#### Support
+[Project Topic](http://herc.ws/board/topic/14083-hercules-battlegrounds/) on http://herc.ws/board/
+
 #### License
 GNU GPL V3, 29 June 2007
