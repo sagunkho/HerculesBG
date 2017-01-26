@@ -1,18 +1,17 @@
-/**
- * This file is a Hercules Plugin.
- * http://herc.ws - http://github.com/HerculesWS/Hercules
- *  __                 _
- * / _\_ __ ___   ___ | | _______  ___   _ ____
- * \ \| '_ ` _ \ / _ \| |/ / _ \ \/ / | | |_  /
- * _\ \ | | | | | (_) |   <  __/>  <| |_| |/ /
- * \__/_| |_| |_|\___/|_|\_\___/_/\_\\__, /___|
- *                                   |___/
- * Copyright (c) 2016 Smokexyz.
- * All rights reserved.
- *
- * hBattlegrounds (Hercules Battlegrounds)
- * * * * * * * * * * * * * * * * * * * * * * * * */
-
+/*
+* This file is a Hercules Plugin.
+* http://herc.ws - http://github.com/HerculesWS/Hercules
+*  __                 _
+* / _\_ __ ___   ___ | | _______  ___   _ ____
+* \ \| '_ ` _ \ / _ \| |/ / _ \ \/ / | | |_  /
+* _\ \ | | | | | (_) |   <  __/>  <| |_| |/ /
+* \__/_| |_| |_|\___/|_|\_\___/_/\_\\__, /___|
+*                                   |___/
+* Copyright (c) 2016 Smokexyz.
+* All rights reserved.
+*
+* hBattlegrounds (Hercules Battlegrounds)
+* * * * * * * * * * * * * * * * * * * * * * * * */
 #include "common/hercules.h" /* Should always be the first Hercules file included! */
 
 #include "common/memmgr.h"
@@ -49,26 +48,113 @@
 #include <stdlib.h>
 #include <string.h>
 
-/**
- * HPM Structure
- */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                    Utility Functions
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+#define add2limit(a, b, max) \
+	do { \
+		if( (max - a) < b ) { \
+			a = max; \
+		} else { \
+			a += b; \
+		} \
+	} while(0)
+
+#define sub2limit(a, b, min) \
+	do { \
+		if( (b + min) > a ) { \
+			a = min; \
+		} else { \
+			a -= b; \
+		} \
+	} while(0)
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                    HPM Structure Definition
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 HPExport struct hplugin_info pinfo = {
 	"Hercules Battlegrounds",    // Plugin name
 	SERVER_TYPE_MAP, // Server Type
-	"0.1",       // Plugin version
+	"0.2",       // Plugin version
 	HPM_VERSION, // HPM Version (automatically updated)
 };
 
-/**
- * Global Variable Delcarations.
- */
-
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                    Global Variables
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #define MAX_BATTLEGROUND_TEAMS 13
+#define BLUE_SKULL 8965
+#define RED_SKULL 8966
+#define GREEN_SKULL 8967
+
+/* Queue Database */
+static struct DBMap* hBG_queue_db;
+/* Battleground Guild Storage */
+struct guild bg_guild[MAX_BATTLEGROUND_TEAMS];
+/* Battleground Guild Colors */
+const unsigned int bg_colors[MAX_BATTLEGROUND_TEAMS] = {
+	0x0000FF, // Blue
+	0xFF0000, // Red
+	0x00FF00, // Green
+	0xFFFFFF,
+	0xFFFFFF,
+	0xFFFFFF,
+	0xFFFFFF,
+	0xFFFFFF,
+	0xFFFFFF,
+	0xFFFFFF,
+	0xFFFFFF,
+	0xFFFFFF,
+	0xFFFFFF
+};
+
+/* Counter to check the next battleground ID */
+static unsigned int bg_team_counter = 0;
+/* hBG Queue Counter */
+static unsigned int hBG_queue_counter = 0;
+
+/**
+ * Battle Configuration Variables
+ */
+int hBG_afk_announce,
+	hBG_idle_autokick,
+	hBG_reserved_char_id,
+	hBG_items_on_pvp,
+	hBG_reward_rates,
+	hBG_ranked_mode,
+	hBG_reportafk_leaderonly,
+	hBG_balanced_queue,
+	hBG_ip_check,
+	hBG_from_town_only,
+	hBG_enabled,
+	hBG_xy_interval;
+
+/**
+ * BG Fame list types
+ */
+enum bg_fame_list_types
+{
+	BG_NORMAL,
+	BG_RANKED
+};
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                    Structure Definitions
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 /**
  * BGD Structure Appendant
  */
-struct hBG_data {
+struct hBG_data
+{
 	time_t created_at; // Creation of this Team
 	int leader_char_id;
 	unsigned int color;
@@ -82,16 +168,114 @@ struct hBG_data {
 /**
  * hBG Queue Member Linked List
  */
-struct hBG_queue_member {
+struct hBG_queue_member
+{
 	int position;
 	struct map_session_data *sd;
 	struct hBG_queue_member *next;
 };
 
+struct hBG_stats
+{
+	unsigned int
+	top_damage,
+	damage_done,
+	damage_received,
+	boss_damage;
+	
+	unsigned short
+	// Triple Inferno
+	ti_wins,
+	ti_lost,
+	ti_tie,
+	// Tierra EoS
+	eos_flags,
+	eos_bases,
+	eos_wins,
+	eos_lost,
+	eos_tie,
+	// Tierra Bossnia
+	boss_killed,
+	boss_flags,
+	boss_wins,
+	boss_lost,
+	boss_tie,
+	// Tierra Domination
+	dom_bases,
+	dom_off_kills,
+	dom_def_kills,
+	dom_wins,
+	dom_lost,
+	dom_tie,
+	// Flavius TD
+	td_kills,
+	td_deaths,
+	td_wins,
+	td_lost,
+	td_tie,
+	// Flavius SC
+	sc_stolen,
+	sc_captured,
+	sc_droped,
+	sc_wins,
+	sc_lost,
+	sc_tie,
+	// Flavius CTF
+	ctf_taken,
+	ctf_captured,
+	ctf_droped,
+	ctf_wins,
+	ctf_lost,
+	ctf_tie,
+	// Conquest
+	emperium_kill,
+	barricade_kill,
+	gstone_kill,
+	cq_wins,
+	cq_lost,
+	// Rush
+	ru_captures,
+	ru_wins,
+	ru_lost;
+	
+	unsigned int // Ammo
+	sp_heal_potions,
+	hp_heal_potions,
+	yellow_gemstones,
+	red_gemstones,
+	blue_gemstones,
+	poison_bottles,
+	acid_demostration,
+	acid_demostration_fail,
+	support_skills_used,
+	healing_done,
+	wrong_support_skills_used,
+	wrong_healing_done,
+	sp_used,
+	zeny_used,
+	spiritb_used,
+	ammo_used;
+	
+	unsigned short
+	kill_count,
+	death_count,
+	win, lost, tie,
+	leader_win,
+	leader_lost,
+	leader_tie,
+	deserter,
+	rank_games;
+	
+	int score,
+	points,
+	rank_points;
+};
+
 /**
  * MSD Structure Appendant (class 0)
  */
-struct hBG_queue_data {
+struct hBG_queue_data
+{
 	unsigned int q_id, users, min_level;
 	struct hBG_queue_member *first, *last;
 	char queue_name[50], join_event[EVENT_NAME_LENGTH];
@@ -100,17 +284,21 @@ struct hBG_queue_data {
 /**
  * MSD Structure Appendant (class 1)
  */
-struct hBG_map_session_data {
+struct hBG_map_session_data
+{
 	unsigned int bg_kills;
 	struct {
 		unsigned afk : 1;
 	} state;
+	
+	struct hBG_stats stats;
 };
 
 /**
  * MOBD Structure Appendant
  */
-struct hBG_mob_data {
+struct hBG_mob_data
+{
 	struct {
 		unsigned immunity: 1;
 	} state;
@@ -119,50 +307,16 @@ struct hBG_mob_data {
 /**
  * MAPD Structure Appendant
  */
-struct hBG_mapflag {
+struct hBG_mapflag
+{
 	unsigned hBG_topscore : 1; // No Detect NoMapFlag
 };
 
-/**
- * Queue Database
- */
-static struct DBMap* hBG_queue_db;
-/**
- * Battleground Guild Storage
- * Storage of BG "Guild" Information emulation
- */
-struct guild bg_guild[MAX_BATTLEGROUND_TEAMS];
-/**
- * Battleground Colors
- */
-const unsigned int bg_colors[MAX_BATTLEGROUND_TEAMS] = { 0x0000FF, 0xFF0000, 0x00FF00, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF };
-/**
- * Battleground Counters
- */
-static unsigned int bg_team_counter = 0; // Next bg_id
-static unsigned int hBG_queue_counter = 0; // Next hBGq_id
-
-/**
- * Battle Configuration Variables
- */
-int hBG_afk_announce,
-	hBG_idle_autokick,
-	hBG_reserved_char_id,
-	hBG_items_on_pvp,
-	hBG_reward_rates,
-	hBG_ranking_bonus,
-	hBG_ranked_mode,
-	hBG_ranked_max_games,
-	hBG_reportafk_leaderonly,
-	hBG_balanced_queue,
-	hBG_ip_check,
-	hBG_from_town_only,
-	hBG_enabled,
-	hBG_xy_interval;
-
-/**
- * Forward Declarations of certain global-scoped functions.
- */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                    Function Forward Declarations
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 int hBG_countlogin(struct map_session_data *sd, bool check_bat_room);
 int hBG_config_get(const char *key);
 struct guild* hBG_get_guild(int bg_id);
@@ -173,7 +327,6 @@ struct map_session_data* hBG_getavailablesd(struct battleground_data *bgd);
  *                    Packet Sending Functions
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
 /**
  * Updates HP bar of a camp member.
  * Packet Ver < 20140613: 02e0 <account id>.L <name>.24B <hp>.W <max hp>.W (ZC_BATTLEFIELD_NOTIFY_HP).
@@ -296,8 +449,10 @@ void hBG_send_guild_info(struct map_session_data *sd)
 	WFIFOSET(fd,  packet->len);
 }
 
-/// Sends guild skills (ZC_GUILD_SKILLINFO).
-/// 0162 <packet len>.W <skill points>.W { <skill id>.W <type>.L <level>.W <sp cost>.W <atk range>.W <skill name>.24B <upgradeable>.B }*
+/** 
+ * Sends guild skills (ZC_GUILD_SKILLINFO).
+ * 0162 <packet len>.W <skill points>.W { <skill id>.W <type>.L <level>.W <sp cost>.W <atk range>.W <skill name>.24B <upgradeable>.B }*
+ */
 void hBG_send_guild_skillinfo(struct map_session_data* sd)
 {
 	int fd;
@@ -1128,6 +1283,27 @@ int hBG_send_dot_remove(struct map_session_data *sd)
 }
 
 /**
+ * Searches and removes battleground game specific 
+ * items from the player's inventory.
+ * @param sd as struct map_session_data
+ */
+void hBG_member_remove_bg_items(struct map_session_data *sd)
+{
+	int n;
+	
+	nullpo_ret(sd);
+	
+	if ((n = pc->search_inventory(sd,BLUE_SKULL)) >= 0)
+		pc->delitem(sd, n, sd->status.inventory[n].amount, 0, 2, LOG_TYPE_CONSUME);
+	
+	if ((n = pc->search_inventory(sd,RED_SKULL)) >= 0)
+		pc->delitem(sd, n, sd->status.inventory[n].amount, 0, 2,LOG_TYPE_CONSUME);
+	
+	if ((n = pc->search_inventory(sd,GREEN_SKULL)) >= 0)
+		pc->delitem(sd, n, sd->status.inventory[n].amount, 0, 2,LOG_TYPE_CONSUME);
+}
+
+/**
  * Remove a player from a team.
  * @param sd pointer to session data.
  * @param flag type of leave.
@@ -1163,11 +1339,16 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 	sd->bg_id = 0;
 	hBGsd->bg_kills = 0;
 	
+	// Remove Battleground member data
 	removeFromMSD(sd, 1);
-	//hBG_member_removeskulls(sd);
+	
+	// Remove battleground items if any.
+	hBG_member_remove_bg_items(sd);
 
 	// Remove Guild Skill Buffs
 	status_change_end(&sd->bl, SC_GUILDAURA, INVALID_TIMER);
+	status_change_end(&sd->bl, SC_GDSKILL_BATTLEORDER, INVALID_TIMER);
+	status_change_end(&sd->bl, SC_GDSKILL_REGENERATION, INVALID_TIMER);
 
 	// Refresh Guild Information
 	if (sd->status.guild_id && (g = guild->search(sd->status.guild_id)) != NULL) {
@@ -1177,6 +1358,8 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 		clif->guild_memberlist(sd);
 		clif->guild_skillinfo(sd);
 		clif->guild_emblem(sd, g);
+	} else {
+		hBG_send_leave_single(sd, sd->status.name, "Leaving Battle...");
 	}
 
 	clif->charnameupdate(sd);
@@ -1194,26 +1377,30 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 	
 	if (hBGd->leader_char_id == sd->status.char_id)
 		hBGd->leader_char_id = 0;
-
-	bgd->count--;
 	
-	for(i = 0; i < MAX_BG_MEMBERS; i++) { // Update other BG members
-		if ((pl_sd = bgd->members[i].sd) == NULL)
-			continue;
-		
-		if (!hBGd->leader_char_id) // Set new Leader first on the list
-			hBGd->leader_char_id = pl_sd->status.char_id;
-
-		switch(flag) {
-			case 3: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Status..."); break;
-			case 2: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Report..."); break;
-			case 1: hBG_send_expulsion(pl_sd, sd->status.name, "User has quit the game..."); break;
-			case 0: hBG_send_leave_single(pl_sd, sd->status.name, "Leaving Battle..."); break;
+	//unit->remove_map_pc(sd, CLR_RESPAWN); // [Vykimo] Simulating the warp effect for disconnecting
+	
+	if (--bgd->count > 0) {
+		for(i = 0; i < MAX_BG_MEMBERS; i++) { // Update other BG members
+			if ((pl_sd = bgd->members[i].sd) == NULL)
+				continue;
+			
+			if (!hBGd->leader_char_id) { // Set new Leader first on the list
+				hBGd->leader_char_id = pl_sd->status.char_id;
+				clif->charnameupdate(pl_sd);
+			}
+			
+			switch(flag) {
+				case 3: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Status..."); break;
+				case 2: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Report..."); break;
+				case 1: hBG_send_expulsion(pl_sd, sd->status.name, "User has quit the game..."); break;
+				case 0: hBG_send_leave_single(pl_sd, sd->status.name, "Leaving Battle..."); break;
+			}
+			
+			hBG_guild_window_info(pl_sd);
+			hBG_send_emblem(pl_sd, hBGd->g);
+			hBG_send_guild_member_list(pl_sd);
 		}
-
-		hBG_guild_window_info(pl_sd);
-		hBG_send_emblem(pl_sd, hBGd->g);
-		hBG_send_guild_member_list(pl_sd);
 	}
 
 	return bgd->count;
@@ -1260,7 +1447,9 @@ int hBG_team_finalize(int bg_id, bool remove)
 		sd->bg_id = 0;
 
 		// Remove Guild Skill Buffs
-		status_change_end(&sd->bl,SC_GUILDAURA,INVALID_TIMER);
+		status_change_end(&sd->bl, SC_GUILDAURA, INVALID_TIMER);
+		status_change_end(&sd->bl, SC_GDSKILL_BATTLEORDER, INVALID_TIMER);
+		status_change_end(&sd->bl, SC_GDSKILL_REGENERATION, INVALID_TIMER);
 
 		if (sd->status.guild_id && (g = guild->search(sd->status.guild_id)) != NULL) {
 			clif->guild_belonginfo(sd,g);
@@ -1353,18 +1542,44 @@ void hBG_team_get_kafrapoints(int bg_id, int amount)
 	}
 }
 
+void hBG_add_rank_points(struct map_session_data *sd, int ranktype, int count)
+{
+	struct hBG_map_session_data *hBGsd;
+	char message[100];
+	
+	nullpo_retv(sd);
+	
+	if ((hBGsd = getFromBGDATA(sd, 1)) == NULL)
+		return;
+	
+	if (ranktype == BG_RANKED) {
+		add2limit(hBGsd->stats.rank_points, count, MAX_FAME);
+		sprintf(message, "[Battlegrounds Ranked] Your ranking has increased by %d.", count);
+		clif->disp_message(&sd->bl, message, SELF);
+		hookStop();
+	} else if (ranktype == BG_NORMAL) {
+		add2limit(hBGsd->stats.points, count, MAX_FAME);
+		sprintf(message, "[Battlegrounds Normal] Your ranking has increased by %d.", count);
+		clif->disp_message(&sd->bl, message, SELF);
+		hookStop();
+	}
+}
+
 /* ==============================================================
  bg_arena (0 EoS | 1 Boss | 2 TI | 3 CTF | 4 TD | 5 SC | 6 CON | 7 RUSH | 8 DOM)
  bg_result (0 Won | 1 Tie | 2 Lost)
  ============================================================== */
-void bg_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int quest_id, const char *var, int add_value, int bg_arena, int bg_result)
+void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int quest_id, const char *var, int add_value, int bg_arena, int bg_result)
 {
-	struct battleground_data *bgd;
-	struct map_session_data *sd;
+	struct battleground_data *bgd = NULL;
+	struct map_session_data *sd = NULL;
+	struct hBG_map_session_data *hBGsd = NULL;
+	struct hBG_data *hBGd = NULL;
 	struct item_data *id;
 	struct item it;
-	int j, flag, get_amount, reward_rate = hBG_config_get("battle_configuration/hBG_reward_rates");
-
+	int j, flag, get_amount,
+	reward_rate = hBG_config_get("battle_configuration/hBG_reward_rates"), fame = 0, type = 0;
+	
 	if (amount < 1 || (bgd = bg->team_search(bg_id)) == NULL || (id = itemdb->exists(nameid)) == NULL)
 		return;
 
@@ -1372,10 +1587,11 @@ void bg_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int que
 		amount = amount * reward_rate / 100;
 		kafrapoints = kafrapoints * reward_rate / 100;
 	}
-
-	//bg_result = cap_value(bg_result,0,2);
-
+	
 	memset(&it,0,sizeof(it));
+	
+	bg_result = cap_value(bg_result,0,2);
+	
 	if (nameid == 7828 || nameid == 7829 || nameid == 7773) {
 		it.nameid = nameid;
 		it.identify = 1;
@@ -1386,8 +1602,12 @@ void bg_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int que
 	for(j = 0; j < MAX_BG_MEMBERS; j++) {
 		if ((sd = bgd->members[j].sd) == NULL)
 			continue;
+		else if ((hBGsd = getFromMSD(sd, 1)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
+			continue;
 
-		if (quest_id) quest->add(sd, quest_id);
+		if (quest_id)
+			quest->add(sd, quest_id);
+		
 		pc_setglobalreg(sd, script->add_str(var), pc_readglobalreg(sd,script->add_str(var)) + add_value);
 
 		if (kafrapoints > 0) {
@@ -1400,6 +1620,92 @@ void bg_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int que
 
 			if ((flag = pc->additem(sd,&it,get_amount,LOG_TYPE_SCRIPT)))
 				clif->additem(sd,0,0,flag);
+		}
+		
+		type = hBG_config_get("battle_configuration/hBG_ranked_mode")?BG_RANKED:BG_NORMAL;
+		
+		switch (bg_result) {
+			case 0: // Won
+				add2limit(hBGsd->stats.win,1,USHRT_MAX);
+				fame = 100;
+				if( sd->status.char_id == hBGd->leader_char_id ) {
+					add2limit(hBGsd->stats.leader_win,1,USHRT_MAX);
+					fame += 25;
+				}
+				
+				hBG_add_rank_points(sd, fame, type);
+				
+				switch (bg_arena) {
+					case 0:
+						add2limit(hBGsd->stats.eos_wins,1,USHRT_MAX);
+						break;
+					case 1:
+						add2limit(hBGsd->stats.boss_wins,1,USHRT_MAX);
+						break;
+					case 2:
+						add2limit(hBGsd->stats.ti_wins,1,USHRT_MAX);
+						break;
+					case 3:
+						add2limit(hBGsd->stats.ctf_wins,1,USHRT_MAX);
+						break;
+					case 4:
+						add2limit(hBGsd->stats.td_wins,1,USHRT_MAX);
+						break;
+					case 5:
+						add2limit(hBGsd->stats.sc_wins,1,USHRT_MAX);
+						break;
+					case 6:
+						add2limit(hBGsd->stats.cq_wins,1,USHRT_MAX);
+						break;
+					case 7:
+						add2limit(hBGsd->stats.ru_wins,1,USHRT_MAX);
+						break;
+					case 8:
+						add2limit(hBGsd->stats.dom_wins,1,USHRT_MAX);
+						break;
+				}
+				break;
+			case 1: // Tie
+				add2limit(hBGsd->stats.tie,1,USHRT_MAX);
+				fame = 75;
+				if( sd->status.char_id == hBGd->leader_char_id ) {
+					add2limit(hBGsd->stats.leader_tie,1,USHRT_MAX);
+					fame += 10;
+				}
+				hBG_add_rank_points(sd, fame, type);
+				switch (bg_arena) {
+					case 0: add2limit(hBGsd->stats.eos_tie,1,USHRT_MAX); break;
+					case 1: add2limit(hBGsd->stats.boss_tie,1,USHRT_MAX); break;
+					case 2: add2limit(hBGsd->stats.ti_tie,1,USHRT_MAX); break;
+					case 3: add2limit(hBGsd->stats.ctf_tie,1,USHRT_MAX); break;
+					case 4: add2limit(hBGsd->stats.td_tie,1,USHRT_MAX); break;
+					case 5: add2limit(hBGsd->stats.sc_tie,1,USHRT_MAX); break;
+						// No Tie for Conquest or Rush
+					case 8: add2limit(hBGsd->stats.dom_tie,1,USHRT_MAX); break;
+				}
+				break;
+			case 2: // Lost
+				add2limit(hBGsd->stats.lost,1,USHRT_MAX);
+				
+				fame = 50;
+				
+				if( sd->status.char_id == hBGd->leader_char_id )
+					add2limit(hBGsd->stats.leader_lost,1,USHRT_MAX);
+				
+				hBG_add_rank_points(sd, fame, type);
+				
+				switch (bg_arena) {
+					case 0: add2limit(hBGsd->stats.eos_lost,1,USHRT_MAX); break;
+					case 1: add2limit(hBGsd->stats.boss_lost,1,USHRT_MAX); break;
+					case 2: add2limit(hBGsd->stats.ti_lost,1,USHRT_MAX); break;
+					case 3: add2limit(hBGsd->stats.ctf_lost,1,USHRT_MAX); break;
+					case 4: add2limit(hBGsd->stats.td_lost,1,USHRT_MAX); break;
+					case 5: add2limit(hBGsd->stats.sc_lost,1,USHRT_MAX); break;
+					case 6: add2limit(hBGsd->stats.cq_lost,1,USHRT_MAX); break;
+					case 7: add2limit(hBGsd->stats.ru_lost,1,USHRT_MAX); break;
+					case 8: add2limit(hBGsd->stats.dom_lost,1,USHRT_MAX); break;
+				}
+				break;
 		}
 	}
 }
@@ -1528,13 +1834,13 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 		   && DIFF_TICK(sockt->last_tick, sd->idletime) >= hBG_config_get("battle_configuration/hBG_idle_autokick")
 		   && hBGd->g
 			&& map->list[sd->bl.m].flag.battleground) {
-			sprintf(output, "[AFK Check] %s has been kicked.", sd->status.name);
+			sprintf(output, "[Battlegrounds] %s has been kicked for being AFK.", sd->status.name);
 			clif->broadcast2(&sd->bl, output, (int)strlen(output)+1, hBGd->color, 0x190, 20, 0, 0, BG);
 
 			hBG_team_leave(sd,3);
 			
 			clif->message(sd->fd, "You have been kicked from Battleground because of your AFK status.");
-			pc->setpos(sd,sd->status.save_point.map,sd->status.save_point.x,sd->status.save_point.y,3);
+			pc->setpos(sd, sd->status.save_point.map, sd->status.save_point.x, sd->status.save_point.y, 3);
 			continue;
 		}
 
@@ -1546,6 +1852,7 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 
 		if (hBGd->reveal_pos && hBGd->reveal_flag && sd->bl.m == m)
 			map->foreachinmap(hBG_reveal_pos,m,BL_PC,sd,1,hBGd->color);
+		
 		// @TODO - Message for AFK Idling
 //		if (hBG_config_get("battle_configuration/bg_idle_announce") && sd->state.afk && bg->g)
 //		{ // Idle announces
@@ -1607,12 +1914,68 @@ int hBG_addflooritem_area(struct block_list* bl, int16 m, int16 x, int16 y, int 
 	return count;
 }
 
+// @TODO
+void hBG_char_tosql(struct map_session_data *sd)
+{
+	struct hBG_map_session_data *hBGsd = NULL;
+	
+	if ((hBGsd = getFromMSD(sd, 0)) == NULL)
+		return;
+}
+
+void hBG_bg_ranking_display(struct map_session_data *sd, bool ranked)
+{
+	struct hBG_map_session_data *hBGsd = NULL;
+	
+	nullpo_retv(sd);
+	
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL)
+		return;
+	
+	// print shit.
+	
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                     @Commands
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/**
+ * Display battleground rankings.
+ */
+ACMD(bgrank)
+{
+	char mode[7];
+	char atcmd_output[256];
+	
+	memset(atcmd_output, '\0', sizeof(atcmd_output));
+	
+	if (!*message || sscanf(message, "%7s", mode) < 1) {
+		sprintf(atcmd_output, "Please, enter a battleground mode (usage: @bgrank <ranked/normal>).");
+		clif->message(fd, atcmd_output);
+		return false;
+	}
+	
+	if (strncmpi(mode, "ranked", 7) == 0) {
+		hBG_bg_ranking_display(sd, true);
+	} else if (strncmpi(mode, "normal", 7) == 0) {
+		hBG_bg_ranking_display(sd, true);
+	} else {
+		sprintf(atcmd_output, "Please, enter a battleground mode (usage: @bgrank <ranked/normal>).");
+		clif->message(fd, atcmd_output);
+		return false;
+	}
+	
+	return true;
+}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *                     Script Commands
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 /**
  * Send out a battleground announcement.
  * @param mes
@@ -2726,7 +3089,7 @@ BUILDIN(hBG_reward)
 	bg_arena = script_getnum(st,9);
 	bg_result = script_getnum(st,10);
 
-	bg_team_rewards(bg_id, nameid, amount, kafrapoints, quest_id, var, add_value, bg_arena, bg_result);
+	hBG_team_rewards(bg_id, nameid, amount, kafrapoints, quest_id, var, add_value, bg_arena, bg_result);
 	return true;
 }
 
@@ -2766,14 +3129,6 @@ BUILDIN(hBG_flooritem2xy)
 	return true;
 }
 
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *                     Char Server Function Post-Hooks
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/**
- * Char Post-Hooks
- */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *                     Map Server Function Pre-Hooks
@@ -3038,17 +3393,18 @@ void clif_parse_UseSkillToId_post(int fd, struct map_session_data *sd)
 	skill_id = RFIFOW(fd,packet->pos[1]);
 	target_id = RFIFOL(fd,packet->pos[2]);
 	
-	if (skill_id >= GD_SKILLBASE && skill_id < GD_MAX) {
-		if( hBGd->leader_char_id == sd->status.char_id )
-			skill_lv = guild->checkskill(hBG_get_guild(sd->bg_id), skill_id);
-		else
-			skill_lv = 0;
-	}
-	
-	if( skill_lv )
-		unit->skilluse_id(&sd->bl, target_id, skill_id, skill_lv);
+	if (skill_id >= GD_SKILLBASE && skill_id < GD_MAX && hBGd->leader_char_id == sd->status.char_id )
+			unit->skilluse_id(&sd->bl, target_id, skill_id, guild->checkskill(hBG_get_guild(sd->bg_id), skill_id));
 }
 
+/**
+ * Server tells 'sd' player client the abouts of 'dstsd' player
+ */
+void clif_getareachar_pc_post(struct map_session_data *sd,struct map_session_data *dstsd)
+{
+	if (sd->bg_id && dstsd->bg_id && sd->bg_id == dstsd->bg_id)
+			clif->hpmeter_single(sd->fd, dstsd->bl.id, dstsd->battle_status.hp, dstsd->battle_status.max_hp);
+}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -3105,10 +3461,17 @@ void hBG_config_read(const char *key, const char *val)
 		}
 	} else if (strcmpi(key, "battle_configuration/hBG_xy_interval") == 0) {
 		if (value < 0) {
-			ShowWarning("Received Invalid Setting %d for hBG_xy_interval, default to 1000ms. \n", value);
+			ShowWarning("Received Invalid Setting %d for hBG_xy_interval, defaulting to 1000ms. \n", value);
 			hBG_xy_interval = 1000;
 		} else {
 			hBG_xy_interval = value;
+		}
+	} else if (strcmpi(key, "battle_configuration/hBG_ranked_mode") == 0) {
+		if (value < 0 || value > 1) {
+			ShowWarning("Received Invalid Setting %d for hBG_ranked_mode, defaulting to 0.\n", value);
+			hBG_ranked_mode = 0;
+		} else {
+			hBG_ranked_mode = value;
 		}
 	}
 }
@@ -3131,6 +3494,8 @@ int hBG_config_get(const char *key)
 		return hBG_reward_rates;
 	else if (strcmpi(key, "battle_configuration/hBG_xy_interval") == 0)
 		return hBG_xy_interval;
+	else if (strcmpi(key, "battle_configuration/hBG_ranked_mode") == 0)
+		return hBG_ranked_mode;
 
 	return 0;
 }
@@ -3162,6 +3527,10 @@ HPExport void plugin_init(void)
 		/* Function Post-Hooks */
 		addHookPost(clif, pLoadEndAck, clif_parse_LoadEndAck_post);
 		addHookPost(clif, pUseSkillToId, clif_parse_UseSkillToId_post);
+		addHookPost(clif, getareachar_pc, clif_getareachar_pc_post);
+		
+		/* @Commands */
+		addAtcommand("bgrank", bgrank);//link our '@sample' command
 		
 		/* Script Commands */
 		addScriptCommand("hBG_team_create","siiiss", hBG_team_create);
@@ -3221,6 +3590,7 @@ HPExport void server_preinit(void)
 	addBattleConf("battle_configuration/hBG_balanced_queue", hBG_config_read, hBG_config_get, true);
 	addBattleConf("battle_configuration/hBG_reward_rates", hBG_config_read, hBG_config_get, true);
 	addBattleConf("battle_configuration/hBG_xy_interval", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_ranked_mode", hBG_config_read, hBG_config_get, true);
 }
 
 /* run when server is ready (online) */

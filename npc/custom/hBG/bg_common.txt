@@ -64,17 +64,32 @@ OnInit:
 	initnpctimer; // Initiate rotation timer.
 
 	if (.BGCommandsEnabled) {
+        /* Admin / GM Commands */
+        bindatcmd "bgstart","BG_Queue_Handler::OnBGStartCommand",99,99;
+        bindatcmd "bgstop","BG_Queue_Handler::OnBGStopCommand",99,99;
+        /* Player Commands */
 		bindatcmd "joinbg","BG_Queue_Handler::OnDoJoin",0,99;
 		bindatcmd "leavebg","BG_Queue_Handler::OnDoLeave",0,99;
 	}
 	end;
 
+OnBGStartCommand: 
+    .BGEnabled = 1;
+    goto OnEndArena;
+OnBGStopCommand:
+    .BGEnabled = 0;
+    .@msg$ = "[Battlegrounds] Arenas and Queuing have been disabled by a Game Master.";
+	announce .@msg$, 0, 0x00FFFF, 0x190, 12, 100, 100;
+    donpcevent .BG_Arena$+"::OnMatchEnd";
+    goto OnEndArena;
+    
 // @joinbg
 OnDoJoin:
-	if (questprogress(8506,PLAYTIME) == 2)
+    if (!.BGEnabled) 
+        message strcharinfo(0),"Battlegrounds are currently disabled.";
+	else if (questprogress(8506,PLAYTIME) == 2)
 		erasequest 8506;
-
-	if (questprogress(8506,PLAYTIME) == 1) {
+	else if (questprogress(8506,PLAYTIME) == 1) {
 		dispbottom "[You are a Deserter. You can't participate until the indicator goes off]";
 		end;
 	}
@@ -87,6 +102,7 @@ OnDoLeave:
 	hBG_queue_leave .BG_Queue;
 	end;
 
+// Triggers after an arena has ended.
 OnEndArena:
 	set $@Arena_Status, 0;
 	// Warps teams back to the battle room.
@@ -100,8 +116,9 @@ OnEndArena:
 	// Fall through
 // Start Arena rotation.
 OnRotate:
-// Rotate every 120 seconds.
+// Rotate every n seconds.
 OnTimer5000:
+    if (!.BGEnabled) end;
 	// Restart from index 0, if reached max.
 	if (set($BG_Index,$BG_Index + 1) >= .TotalArenas)
 		set $BG_Index,0;
@@ -114,7 +131,7 @@ OnQueueJoinEvent:
 	// BG Status Types -
 	// 0 - Idle, ready to start.
 	// 1 - Running, others can join.
-	// 2 - Ending, BG Clear-up mode.
+	// 2 - Ending, Battleground is clearing up.
 	if ($@Arena_Status == 2)
 		end;
 
@@ -447,7 +464,7 @@ moc_para01,18,18,6	duplicate(BG_Register)	Battle Recruiter#para	4_F_JOB_KNIGHT
 /**
  * General Guillaume
  */
-bat_room,160,159,3	script	General Guillaume	4_M_KY_KIYOM,{
+bat_room,160,159,3	script	General Guillaume#hBG	4_M_KY_KIYOM,{
 	cutin "bat_kiyom2",2;
 	set .@name$, "[General Guillaume]";
 	mes .@name$;
@@ -474,7 +491,7 @@ bat_room,160,159,3	script	General Guillaume	4_M_KY_KIYOM,{
 /**
  * Prince Croix
  */
-bat_room,160,140,3	script	Prince Croix	4_M_CRU_CRUA,{
+bat_room,160,140,3	script	Prince Croix#hBG	4_M_CRU_CRUA,{
 	cutin "bat_crua1",2;
 	set .@name$, "[Prince Croix]";
 	mes .@name$;
@@ -574,5 +591,5 @@ bat_room,148,150,4	script	Teleporter#bat	4_F_TELEPORTER,{
  */
 bat_room,148,147,4	script	Kafra Staff::kaf_bat	4_F_KAFRA9,{
 	cutin "kafra_09",2;
-	callfunc "F_Kafra",0,2,1,150,0;
+    callfunc "F_Kafra", 5, 0, 1, 20, 600;
 }

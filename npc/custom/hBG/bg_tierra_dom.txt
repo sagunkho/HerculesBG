@@ -47,7 +47,7 @@ OnNScore:
 	else
 		set .Croix_Score, .Croix_Score + 1;
 
-	donpcevent "Tierra_DOM::OnValidateScore";
+	donpcevent "Tierra_DOM::OnMatchEnd";
 	end;
 
 OnSScore:
@@ -59,7 +59,7 @@ OnSScore:
 	else
 		set .Croix_Score, .Croix_Score + 1;
 
-	donpcevent "Tierra_DOM::OnValidateScore";
+	donpcevent "Tierra_DOM::OnMatchEnd";
 	end;
 
 OnCScore:
@@ -71,10 +71,10 @@ OnCScore:
 	else
 		set .Croix_Score, .Croix_Score + 1;
 
-	donpcevent "Tierra_DOM::OnValidateScore";
+	donpcevent "Tierra_DOM::OnMatchEnd";
 	end;
 
-OnValidateScore:
+OnMatchEnd:
 	if( .Guillaume_Score > 99 )
 		set .Guillaume_Score, 99;
 	if( .Croix_Score > 99 )

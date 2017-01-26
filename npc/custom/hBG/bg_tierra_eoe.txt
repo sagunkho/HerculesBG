@@ -103,7 +103,7 @@ OnGuillaumeFlag:
 		mapannounce "bat_a02","Guillaume Team captured the Flag [+3 points]",1,0x0000FF;
 	}
 
-	donpcevent "Tierra_EOS::OnValidateScore";
+	donpcevent "Tierra_EOS::OnMatchEnd";
 	donpcevent "Neutral_Flag::OnBase";
 	end;
 
@@ -123,7 +123,7 @@ OnCroixFlag:
 		mapannounce "bat_a02","Croix Team captured the Flag [+3 points]",1,0xFF0000;
 	}
 
-	donpcevent "Tierra_EOS::OnValidateScore";
+	donpcevent "Tierra_EOS::OnMatchEnd";
 	donpcevent "Neutral_Flag::OnBase";
 	end;
 
@@ -143,7 +143,7 @@ OnNorthScore:
 	else
 		set .Croix_Score, .Croix_Score + 1;
 
-	donpcevent "Tierra_EOS::OnValidateScore";
+	donpcevent "Tierra_EOS::OnMatchEnd";
 	end;
 
 OnSouthScore:
@@ -162,10 +162,10 @@ OnSouthScore:
 	else
 		set .Croix_Score, .Croix_Score + 1;
 
-	donpcevent "Tierra_EOS::OnValidateScore";
+	donpcevent "Tierra_EOS::OnMatchEnd";
 	end;
 
-OnValidateScore:
+OnMatchEnd:
 	if( .Guillaume_Score > 99 )
 		set .Guillaume_Score, 99;
 	if( .Croix_Score > 99 )
