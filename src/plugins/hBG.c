@@ -3530,7 +3530,7 @@ HPExport void plugin_init(void)
 		addHookPost(clif, getareachar_pc, clif_getareachar_pc_post);
 		
 		/* @Commands */
-		addAtcommand("bgrank", bgrank);//link our '@sample' command
+		addAtcommand("bgrank", bgrank);
 		
 		/* Script Commands */
 		addScriptCommand("hBG_team_create","siiiss", hBG_team_create);
