@@ -41,7 +41,9 @@ OnInit:
 	// Battleground announcement colors.
 	setarray .BG_Color$[0],        "0x2F9F2D",       "0xAA00FF",        "0xFF0033",    "0x33FF99",   "0x3399FF",  "0xFFA500",    "0x9ACD32",    "0x4169E1",   "0xDDA0DD";
 
-	// Team Building Mode : 0 = Lineal, 1 = Random
+	// Team Building Mode : 
+    // 0 = Lineal [Keeps parties together]
+    // 1 = Random
 	set .TeamBuildingMode, 1;
 
 	// Battleground @commands (@joinbg, @leavebg).
@@ -49,6 +51,15 @@ OnInit:
 
 	// Minimum Level to join the BG queue.
 	set .BGQueue_Level_Min, 80;
+
+	if (.BGCommandsEnabled) {
+        /* Admin / GM Commands */
+        bindatcmd "bgstart","BG_Queue_Handler::OnBGStartCommand",99,99;
+        bindatcmd "bgstop","BG_Queue_Handler::OnBGStopCommand",99,99;
+        /* Player Commands */
+		bindatcmd "joinbg","BG_Queue_Handler::OnDoJoin",0,99;
+		bindatcmd "leavebg","BG_Queue_Handler::OnDoLeave",0,99;
+	}
 
 	/* * * * * DO NOT TOUCH ANYTHING BELOW THIS LINE * * * * * * * * * * * * * * * */
 	set .TotalArenas, getarraysize(.BG_Arenas$);
@@ -60,24 +71,14 @@ OnInit:
 		set $BG_Index,0; // Restart Rotation
 
 	set .BG_Arena$,.BG_Arenas$[$BG_Index];
-	set .Ready, 1;
 	initnpctimer; // Initiate rotation timer.
-
-	if (.BGCommandsEnabled) {
-        /* Admin / GM Commands */
-        bindatcmd "bgstart","BG_Queue_Handler::OnBGStartCommand",99,99;
-        bindatcmd "bgstop","BG_Queue_Handler::OnBGStopCommand",99,99;
-        /* Player Commands */
-		bindatcmd "joinbg","BG_Queue_Handler::OnDoJoin",0,99;
-		bindatcmd "leavebg","BG_Queue_Handler::OnDoLeave",0,99;
-	}
 	end;
 
 OnBGStartCommand: 
-    .BGEnabled = 1;
+    setbattleflag "hBG_enabled", 1;
     goto OnEndArena;
 OnBGStopCommand:
-    .BGEnabled = 0;
+    setbattleflag "hBG_enabled", 0;
     .@msg$ = "[Battlegrounds] Arenas and Queuing have been disabled by a Game Master.";
 	announce .@msg$, 0, 0x00FFFF, 0x190, 12, 100, 100;
     donpcevent .BG_Arena$+"::OnMatchEnd";
@@ -85,11 +86,12 @@ OnBGStopCommand:
     
 // @joinbg
 OnDoJoin:
-    if (!.BGEnabled) 
+    if (!getbattleflag("hBG_enabled")) {
         message strcharinfo(0),"Battlegrounds are currently disabled.";
-	else if (questprogress(8506,PLAYTIME) == 2)
+        end;
+	} else if (questprogress(8506,PLAYTIME) == 2) {
 		erasequest 8506;
-	else if (questprogress(8506,PLAYTIME) == 1) {
+	} else if (questprogress(8506,PLAYTIME) == 1) {
 		dispbottom "[You are a Deserter. You can't participate until the indicator goes off]";
 		end;
 	}
@@ -118,7 +120,7 @@ OnEndArena:
 OnRotate:
 // Rotate every n seconds.
 OnTimer5000:
-    if (!.BGEnabled) end;
+    if (!getbattleflag("hBG_enabled")) end;
 	// Restart from index 0, if reached max.
 	if (set($BG_Index,$BG_Index + 1) >= .TotalArenas)
 		set $BG_Index,0;

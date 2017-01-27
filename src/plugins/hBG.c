@@ -22,6 +22,7 @@
 #include "common/timer.h"
 #include "common/utils.h"
 
+#include "map/atcommand.h"
 #include "map/clif.h"
 #include "map/pc.h"
 #include "map/script.h"
@@ -122,7 +123,7 @@ static unsigned int hBG_queue_counter = 0;
 /**
  * Battle Configuration Variables
  */
-int hBG_afk_announce,
+int hBG_idle_announce,
 	hBG_idle_autokick,
 	hBG_reserved_char_id,
 	hBG_items_on_pvp,
@@ -1187,10 +1188,10 @@ int hBG_team_join(int bg_id, struct map_session_data *sd)
 	}
 	
 	hBGsd->bg_kills = 0;
+	hBGsd->state.afk = 0;
 
-	
 	// Update player's idle item.
-	pc->update_idle_time(sd, BCIDLE_CHAT);
+	pc->update_idle_time(sd, BCIDLE_WALK);
 
 	sd->bg_id = bg_id;
 
@@ -1216,7 +1217,7 @@ int hBG_team_join(int bg_id, struct map_session_data *sd)
 	hBG_send_guild_info(sd); // Send Guild Name/Emblem under character
 	
 	clif->charnameupdate(sd); // Update character's nameplate
-
+	
 	for(i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((pl_sd = bgd->members[i].sd) == NULL)
 			continue;
@@ -1291,7 +1292,7 @@ void hBG_member_remove_bg_items(struct map_session_data *sd)
 {
 	int n;
 	
-	nullpo_ret(sd);
+	nullpo_retv(sd);
 	
 	if ((n = pc->search_inventory(sd,BLUE_SKULL)) >= 0)
 		pc->delitem(sd, n, sd->status.inventory[n].amount, 0, 2, LOG_TYPE_CONSUME);
@@ -1782,7 +1783,7 @@ void hBG_build_guild_data(void)
 		}
 	}
 	
-	ShowStatus("Done reading '"CL_WHITE"%s"CL_RESET"' emblem data files.\n", pinfo.name);
+	ShowStatus("Done reading '"CL_WHITE"%s"CL_RESET"' v%s emblem data files. [By Smokexyz]\n", pinfo.name, pinfo.version);
 
 	// Guild Data - Guillaume
 	strncpy(bg_guild[0].name, "Blue Team", NAME_LENGTH);
@@ -1815,10 +1816,11 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 {
 	struct battleground_data *bgd = DB->data2ptr(data);
 	struct hBG_data *hBGd = getFromBGDATA(bgd, 0);
-
-	struct map_session_data *sd;
+	struct hBG_map_session_data *hBGsd = NULL;
+	struct map_session_data *sd = NULL;
 	char output[128];
-	int i, m;
+	int i, m, idle_announce = hBG_config_get("battle_configuration/hBG_idle_announce"),
+		idle_autokick = hBG_config_get("battle_configuration/hBG_idle_autokick");
 
 	nullpo_ret(bgd);
 	nullpo_ret(hBGd);
@@ -1827,13 +1829,12 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 	hBGd->reveal_flag = !hBGd->reveal_flag; // Switch
 
 	for(i = 0; i < MAX_BG_MEMBERS; i++) {
-		if ((sd = bgd->members[i].sd) == NULL)
+		if ((sd = bgd->members[i].sd) == NULL || (hBGsd = getFromMSD(sd, 1)) == NULL)
 			continue;
 		
-		if (hBG_config_get("battle_configuration/hBG_idle_autokick")
-		   && DIFF_TICK(sockt->last_tick, sd->idletime) >= hBG_config_get("battle_configuration/hBG_idle_autokick")
-		   && hBGd->g
-			&& map->list[sd->bl.m].flag.battleground) {
+		if (idle_autokick && DIFF_TICK(sockt->last_tick, sd->idletime) >= idle_autokick
+			&& hBGd->g && map->list[sd->bl.m].flag.battleground)
+		{
 			sprintf(output, "[Battlegrounds] %s has been kicked for being AFK.", sd->status.name);
 			clif->broadcast2(&sd->bl, output, (int)strlen(output)+1, hBGd->color, 0x190, 20, 0, 0, BG);
 
@@ -1842,23 +1843,22 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 			clif->message(sd->fd, "You have been kicked from Battleground because of your AFK status.");
 			pc->setpos(sd, sd->status.save_point.map, sd->status.save_point.x, sd->status.save_point.y, 3);
 			continue;
-		}
-
-		if (sd->bl.x != bgd->members[i].x || sd->bl.y != bgd->members[i].y) { // xy update
+		} else if (sd->bl.x != bgd->members[i].x || sd->bl.y != bgd->members[i].y) { // xy update
 			bgd->members[i].x = sd->bl.x;
 			bgd->members[i].y = sd->bl.y;
 			clif->bg_xy(sd);
 		}
-
-		if (hBGd->reveal_pos && hBGd->reveal_flag && sd->bl.m == m)
-			map->foreachinmap(hBG_reveal_pos,m,BL_PC,sd,1,hBGd->color);
 		
-		// @TODO - Message for AFK Idling
-//		if (hBG_config_get("battle_configuration/bg_idle_announce") && sd->state.afk && bg->g)
-//		{ // Idle announces
-//			sprintf(output, "%s : %s seems to be away. AFK Warning - Can be kicked out with @reportafk", bg->g->name, sd->status.name);
-//			clif->bg_message(bg, bg->bg_id, bg->g->name, output, (int)strlen(output) + 1);
-//		}
+		if (hBGd->reveal_pos && hBGd->reveal_flag && sd->bl.m == m)
+			map->foreachinmap(hBG_reveal_pos, m, BL_PC, sd, 1, hBGd->color);
+		
+		// Message for AFK Idling
+		if (idle_announce && DIFF_TICK(sockt->last_tick, sd->idletime) >= idle_announce && !hBGsd->state.afk && hBGd->g)
+		{ // Set AFK status and announce to the team.
+			hBGsd->state.afk = 1;
+			sprintf(output, "%s : %s seems to be away. AFK Warning - Can be kicked out with @reportafk.", hBGd->g->name, sd->status.name);
+			hBG_send_chat_message(bgd, sd->bl.id, sd->status.name, output, (int)strlen(output) + 1);
+		}
 	}
 
 	return 0;
@@ -1968,6 +1968,52 @@ ACMD(bgrank)
 	}
 	
 	return true;
+}
+
+ACMD(reportafk)
+{
+	struct map_session_data *pl_sd = NULL;
+	struct hBG_data *hBGd = NULL;
+	struct hBG_map_session_data *hBGsd = NULL;
+	struct hBG_map_session_data *hBGpl_sd = NULL;
+	struct battleground_data *bgd = NULL;
+	
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL) {
+		clif->message(fd, "You are not in battlegrounds.");
+		return false;
+	}
+	
+	if ((bgd = bg->team_search(sd->bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
+		clif->message(fd, "This command is reserved for Battlegrounds Only.");
+	else if (!(hBGd->leader_char_id == sd->status.char_id) && hBG_config_get("battle_configuration/hBG_reportafk_leaderonly"))
+		clif->message(fd, "This command is reserved for Team Leaders Only.");
+	else if (!*message)
+		clif->message(fd, "Please, enter the character name (usage: @reportafk <name>).");
+	else if ((pl_sd = map->nick2sd(message)) == NULL)
+		clif->message(fd, msg_txt(3)); // Character not found.
+	else if ((hBGpl_sd = getFromMSD(pl_sd, 0)) == NULL)
+		clif->message(fd, "Destination Player is not in battlegrounds.");
+	else if (sd->bg_id != pl_sd->bg_id)
+		clif->message(fd, "Destination Player is not in your Team.");
+	else if (sd == pl_sd)
+		clif->message(fd, "You cannot kick yourself.");
+	else if (!hBGpl_sd->state.afk)
+		clif->message(fd, "The player is not AFK on this Battleground.");
+	else
+	{ // Everything is fine!
+		char atcmd_output[256];
+		
+		 // Kick the player and send a message.
+		hBG_team_leave(pl_sd, 2);
+		clif->message(pl_sd->fd, "You have been kicked from Battleground because of your AFK status.");
+		pc->setpos(pl_sd, pl_sd->status.save_point.map, pl_sd->status.save_point.x, pl_sd->status.save_point.y, 3);
+		// Message the source player and announce to team.
+		sprintf(atcmd_output, "%s has been successfully kicked.", pl_sd->status.name);
+		clif->broadcast2(&sd->bl, atcmd_output, (int)strlen(atcmd_output)+1, hBGd->color, 0x190, 20, 0, 0, BG);
+		return true;
+	}
+	
+	return false;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -2391,6 +2437,7 @@ BUILDIN(hBG_queue2teams)
 			}
 		}
 			break;
+		default:
 		case 1: // Random
 		{
 			t = 0;
@@ -2414,7 +2461,7 @@ BUILDIN(hBG_queue2teams)
 					break;
 			}
 		}
-			 break;
+			break;
 	}
 
 	return true;
@@ -2492,7 +2539,7 @@ BUILDIN(hBG_balance_teams)
 			hBG_queue_member_remove(hBGqd, sd->bl.id);
 
 			if ((bgd = bg->team_search(m_bg_id)) != NULL && bgd->mapindex)
-				pc->setpos(sd, bgd->mapindex, bgd->x, bgd->y, CLR_OUTSIGHT); // Joins and Warps
+				pc->setpos(sd, bgd->mapindex, bgd->x, bgd->y, CLR_TELEPORT); // Joins and Warps
 		}
 	}
 
@@ -3406,6 +3453,26 @@ void clif_getareachar_pc_post(struct map_session_data *sd,struct map_session_dat
 			clif->hpmeter_single(sd->fd, dstsd->bl.id, dstsd->battle_status.hp, dstsd->battle_status.max_hp);
 }
 
+/**
+ * PC Post hooks
+ */
+void pc_update_idle_time_post(struct map_session_data* sd, enum e_battle_config_idletime type)
+{
+	struct hBG_map_session_data *hBGsd = NULL;
+	struct battleground_data *bgd = bg->team_search(sd->bg_id);
+	struct hBG_data *hBGd = NULL;
+	
+	nullpo_retv(sd);
+	
+	if (bgd && (hBGd = getFromBGDATA(bgd, 0)) && (hBGsd = getFromMSD(sd, 1)) && hBGsd->state.afk) {
+		char output[256];
+		/* Reset AFK status */
+		sprintf(output, "%s : %s is no longer AFK.", sd->status.name, hBGd->g->name);
+		hBG_send_chat_message(bgd, sd->bl.id, sd->status.name, output, (int)strlen(output) + 1);
+		hBGsd->state.afk = 0;
+	}
+}
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *                     Battle Configuration Parsing
@@ -3433,18 +3500,26 @@ void hBG_config_read(const char *key, const char *val)
 			return;
 		}
 		hBG_ip_check = value;
-	} else if (strcmpi(key, "battle_configuration/hBG_afk_announce") == 0) {
-		if (value < 0 || value > 1) {
-			ShowWarning("Received Invalid Setting %d for hBG_afk_announce, defaulting to 0.\n", value);
-			return;
+	} else if (strcmpi(key, "battle_configuration/hBG_idle_announce") == 0) {
+		if (value < 0) {
+			ShowWarning("Received Invalid Setting %d for hBG_idle_announce, defaulting to 60 seconds.\n", value);
+			hBG_idle_announce = 60;
+		} else {
+			hBG_idle_announce = value;
 		}
-		hBG_afk_announce = value;
 	} else if (strcmpi(key, "battle_configuration/hBG_idle_autokick") == 0) {
 		if (value < 0) {
 			ShowWarning("Received Invalid Setting %d for hBG_idle_autokick, defaulting to 5 minutes (300s).\n", value);
 			hBG_idle_autokick = 300;
 		} else {
 			hBG_idle_autokick = value;
+		}
+	} else if (strcmpi(key, "battle_configuration/hBG_reportafk_leaderonly") == 0) {
+		if (value < 0 || value > 1) {
+			ShowWarning("Received Invalid Setting %d for hBG_reportafk_leaderonly, defaulting to 0.\n", value);
+			hBG_reportafk_leaderonly = 0;
+		} else {
+			hBG_reportafk_leaderonly = value;
 		}
 	} else if (strcmpi(key, "battle_configuration/hBG_balanced_queue") == 0) {
 		if (value < 0 || value > 1) {
@@ -3484,10 +3559,12 @@ int hBG_config_get(const char *key)
 		return hBG_from_town_only;
 	else if (strcmpi(key, "battle_configuration/hBG_ip_check") == 0)
 		return hBG_ip_check;
-	else if (strcmpi(key, "battle_configuration/hBG_afk_announce") == 0)
-		return hBG_afk_announce;
+	else if (strcmpi(key, "battle_configuration/hBG_idle_announce") == 0)
+		return hBG_idle_announce;
 	else if (strcmpi(key, "battle_configuration/hBG_idle_autokick") == 0)
 		return hBG_idle_autokick;
+	else if (strcmpi(key, "battle_configuration/hBG_reportafk_leaderonly") == 0)
+		return hBG_reportafk_leaderonly;
 	else if (strcmpi(key, "battle_configuration/hBG_balanced_queue") == 0)
 		return hBG_balanced_queue;
 	else if (strcmpi(key, "battle_configuration/hBG_reward_rates") == 0)
@@ -3528,9 +3605,11 @@ HPExport void plugin_init(void)
 		addHookPost(clif, pLoadEndAck, clif_parse_LoadEndAck_post);
 		addHookPost(clif, pUseSkillToId, clif_parse_UseSkillToId_post);
 		addHookPost(clif, getareachar_pc, clif_getareachar_pc_post);
+		addHookPost(pc, update_idle_time, pc_update_idle_time_post);
 		
 		/* @Commands */
 		addAtcommand("bgrank", bgrank);
+		addAtcommand("reportafk", reportafk);
 		
 		/* Script Commands */
 		addScriptCommand("hBG_team_create","siiiss", hBG_team_create);
@@ -3576,7 +3655,7 @@ HPExport void plugin_init(void)
 	timer->add_interval(timer->gettick() + interval , hBG_send_xy_timer, 0, 0, interval);
 
 	hBG_build_guild_data();
-	ShowStatus("%s %s has been initialized [by Smokexyz].\n", pinfo.name, pinfo.version);
+	ShowStatus("%s v%s has been initialized. [by Smokexyz]\n", pinfo.name, pinfo.version);
 }
 
 /* triggered when server starts loading, before any server-specific data is set */
@@ -3585,7 +3664,7 @@ HPExport void server_preinit(void)
 	addBattleConf("battle_configuration/hBG_enabled", hBG_config_read, hBG_config_get, true);
 	addBattleConf("battle_configuration/hBG_from_town_only", hBG_config_read, hBG_config_get, true);
 	addBattleConf("battle_configuration/hBG_ip_check", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_afk_announce", hBG_config_read, hBG_config_get, true);
+	addBattleConf("battle_configuration/hBG_idle_announce", hBG_config_read, hBG_config_get, true);
 	addBattleConf("battle_configuration/hBG_idle_autokick", hBG_config_read, hBG_config_get, true);
 	addBattleConf("battle_configuration/hBG_balanced_queue", hBG_config_read, hBG_config_get, true);
 	addBattleConf("battle_configuration/hBG_reward_rates", hBG_config_read, hBG_config_get, true);
@@ -3612,5 +3691,5 @@ static int queue_db_final(union DBKey key, struct DBData *data, va_list ap)
 HPExport void plugin_final(void)
 {
 	hBG_queue_db->destroy(hBG_queue_db, queue_db_final);
-	ShowInfo ("%s %s has been finalized [by Smokexyz].\n",pinfo.name, pinfo.version);
+	ShowInfo ("%s v%s has been finalized. [by Smokexyz]\n",pinfo.name, pinfo.version);
 }
