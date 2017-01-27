@@ -92,7 +92,7 @@ OnReady:
 	hBG_team_updatescore $@BG_Team3,.Traitor_Score;
 	end;
 
-OnMatchEnd:
+OnValidateScore:
 	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_TI" )
 		end;
 	if( .Guillaume_Score >= 80 || .Croix_Score >= 80 || .Traitor_Score >= 80 )
@@ -188,7 +188,7 @@ OnTouch:
 		hBG_team_updatescore $@BG_Team1,.@Score;
 		mapannounce "region_8","Guillaume Totem : " + .@Points + " slaughtered skulls by " + strcharinfo(0) + " [" + .@Score + "/80]",1,0x0000FF;
 //		bg_rankpoints "skulls",.@Points;
-		donpcevent "Tierra_TI::OnMatchEnd";
+		donpcevent "Tierra_TI::OnValidateScore";
 	}
 	end;
 }
@@ -228,7 +228,7 @@ OnTouch:
 		hBG_team_updatescore $@BG_Team2,.@Score;
 		mapannounce "region_8","Croix Totem : " + .@Points + " slaughtered skulls by " + strcharinfo(0) + " [" + .@Score + "/80]",1,0xFF0000;
 //		bg_rankpoints "skulls",.@Points;
-		donpcevent "Tierra_TI::OnMatchEnd";
+		donpcevent "Tierra_TI::OnValidateScore";
 	}
 	end;
 }
@@ -268,7 +268,7 @@ OnTouch:
 		hBG_team_updatescore $@BG_Team3,.@Score;
 		mapannounce "region_8","Traitor Totem : " + .@Points + " slaughtered skulls by " + strcharinfo(0) + " [" + .@Score + "/80]",1,0x00FF00;
 //		bg_rankpoints "skulls",.@Points;
-		donpcevent "Tierra_TI::OnMatchEnd";
+		donpcevent "Tierra_TI::OnValidateScore";
 	}
 	end;
 }
