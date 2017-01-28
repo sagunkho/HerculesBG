@@ -1,9 +1,12 @@
-// ==============================================================================
-// BattleGround System - Flavius Capture the Flag
-// ==============================================================================
-
-// Battleground Flags
-// *********************************************************************
+/**
+ * Hercules Script
+ *
+ * Feature: Hercules Battlegrounds
+ * Version: 1.0
+ * Author: eAmod & Smokexyz
+ *
+ * Description: Hercules Battlegrounds plugin.
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 bat_b02,328,150,0	script	Guillaume Crystal::Guillaume_Flag	OBJ_A2,1,1,{
 	end;

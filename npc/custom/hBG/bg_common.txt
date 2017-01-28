@@ -1,7 +1,7 @@
 /**
  * Hercules Script
  *
- * Feature: hBattleground
+ * Feature: Hercules Battlegrounds
  * Version: 1.0
  * Author: Smokexyz
  *
@@ -23,6 +23,7 @@ bat_room	mapflag	town
 
 /**
  * Battleground Queue Handler
+ * - The main 
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 -	script	BG_Queue_Handler	-1,{
 	end;
@@ -72,13 +73,16 @@ OnInit:
 
 	set .BG_Arena$,.BG_Arenas$[$BG_Index];
 	initnpctimer; // Initiate rotation timer.
+    set .hBGEnabled$, "battle_configuration/hBG_enabled";
 	end;
 
 OnBGStartCommand: 
-    setbattleflag "hBG_enabled", 1;
+    setbattleflag .hBGEnabled$, 1;
+    message strcharinfo(0),"Battlegrounds have been enabled.";
     goto OnEndArena;
 OnBGStopCommand:
-    setbattleflag "hBG_enabled", 0;
+    setbattleflag .hBGEnabled$, 0;
+    message strcharinfo(0),"Battlegrounds have been disabled.";
     .@msg$ = "[Battlegrounds] Arenas and Queuing have been disabled by a Game Master.";
 	announce .@msg$, 0, 0x00FFFF, 0x190, 12, 100, 100;
     donpcevent .BG_Arena$+"::OnMatchEnd";
@@ -86,7 +90,7 @@ OnBGStopCommand:
     
 // @joinbg
 OnDoJoin:
-    if (!getbattleflag("hBG_enabled")) {
+    if (!getbattleflag(.hBGEnabled$)) {
         message strcharinfo(0),"Battlegrounds are currently disabled.";
         end;
 	} else if (questprogress(8506,PLAYTIME) == 2) {
@@ -120,7 +124,7 @@ OnEndArena:
 OnRotate:
 // Rotate every n seconds.
 OnTimer5000:
-    if (!getbattleflag("hBG_enabled")) end;
+    if (!getbattleflag(.hBGEnabled$)) end;
 	// Restart from index 0, if reached max.
 	if (set($BG_Index,$BG_Index + 1) >= .TotalArenas)
 		set $BG_Index,0;

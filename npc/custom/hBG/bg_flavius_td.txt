@@ -1,9 +1,12 @@
-// ==============================================================================
-// BattleGround System - Flavius TeamDeathMatch
-// ==============================================================================
-
-// Battleground Engine
-// *********************************************************************
+/**
+ * Hercules Script
+ *
+ * Feature: Hercules Battlegrounds
+ * Version: 1.0
+ * Author: eAmod & Smokexyz
+ *
+ * Description: Hercules Battlegrounds plugin.
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 -	script	Flavius_TD	-1,{
 	end;
