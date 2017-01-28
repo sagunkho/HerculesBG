@@ -8,7 +8,7 @@
  * Description: Hercules Battlegrounds plugin.
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
--	script	Rush	-1,{
+-	script	Rush	FAKE_NPC,{
 	end;
 
 OnInit:
@@ -222,7 +222,7 @@ OnMatchEnd:
 // Battleground Respawn
 // *********************************************************************
 
--	script	Rush_Respawn	-1,{
+-	script	Rush_Respawn	FAKE_NPC,{
 	end;
 
 OnTimer24000:

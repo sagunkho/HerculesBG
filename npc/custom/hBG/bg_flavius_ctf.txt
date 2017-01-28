@@ -162,7 +162,7 @@ OnBase:
 // Battleground Engine
 // *********************************************************************
 
--	script	Flavius_CTF	-1,{
+-	script	Flavius_CTF	FAKE_NPC,{
 	end;
 
 OnBlueFlash:
