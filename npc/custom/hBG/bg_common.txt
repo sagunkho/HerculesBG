@@ -23,7 +23,6 @@ bat_room	mapflag	town
 
 /**
  * Battleground Queue Handler
- * - The main 
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 -	script	BG_Queue_Handler	-1,{
 	end;
