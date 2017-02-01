@@ -8,7 +8,7 @@
  * Description: Hercules Battlegrounds plugin.
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
--	script	Tierra_TI	-1,{
+-	script	Tierra_TI	FAKE_NPC,{
 	end;
 
 OnInit:

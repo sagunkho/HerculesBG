@@ -8,7 +8,7 @@
  * Description: Hercules Battlegrounds plugin.
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
--	script	FFA_Arena	-1,{
+-	script	FFA_Arena	FAKE_NPC,{
 	end;
 
 OnInit:

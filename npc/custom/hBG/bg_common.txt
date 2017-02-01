@@ -24,7 +24,7 @@ bat_room	mapflag	town
 /**
  * Battleground Queue Handler
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
--	script	BG_Queue_Handler	-1,{
+-	script	BG_Queue_Handler	FAKE_NPC,{
 	end;
 
 OnInit:
@@ -78,14 +78,14 @@ OnInit:
 OnBGStartCommand: 
     setbattleflag .hBGEnabled$, 1;
     message strcharinfo(0),"Battlegrounds have been enabled.";
-    goto OnEndArena;
+    callsub OnEndArena;
 OnBGStopCommand:
     setbattleflag .hBGEnabled$, 0;
     message strcharinfo(0),"Battlegrounds have been disabled.";
     .@msg$ = "[Battlegrounds] Arenas and Queuing have been disabled by a Game Master.";
 	announce .@msg$, 0, 0x00FFFF, 0x190, 12, 100, 100;
     donpcevent .BG_Arena$+"::OnMatchEnd";
-    goto OnEndArena;
+    callsub OnEndArena;
     
 // @joinbg
 OnDoJoin:
@@ -219,7 +219,7 @@ OnFFAQueueJoinEvent:
 /**
  * Battleground Recruiter
  */
--	script	BG_Register	-1,{
+-	script	BG_Register	FAKE_NPC,{
 	set .@name$, "[^FFA500Battle Recruiter^000000]";
 	if (getvariableofnpc(.Ready,"BG_Queue_Handler") == 0)
 		donpcevent "BG_Queue_Handler::OnInit";
