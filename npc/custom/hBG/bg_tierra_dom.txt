@@ -5,7 +5,7 @@
 // Battleground Engine
 // *********************************************************************
 
--	script	Tierra_DOM	-1,{
+-	script	Tierra_DOM	FAKE_NPC,{
 	end;
 
 OnBuildTeams:

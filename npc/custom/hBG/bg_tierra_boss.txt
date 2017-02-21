@@ -8,7 +8,7 @@
  * Description: Hercules Battlegrounds plugin.
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
--	script	Tierra_Boss	-1,{
+-	script	Tierra_Boss	FAKE_NPC,{
 	end;
 
 OnGuillaumeQuit:
@@ -132,7 +132,7 @@ OnMatchEnd:
 	end;
 }
 
--	script	Guillaume_Boss	-1,{
+-	script	Guillaume_Boss	FAKE_NPC,{
 	end;
 
 OnSummon:
@@ -168,7 +168,7 @@ OnBoss:
 	end;
 }
 
--	script	Croix_Boss	-1,{
+-	script	Croix_Boss	FAKE_NPC,{
 	end;
 
 OnSummon:
@@ -204,7 +204,7 @@ OnBoss:
 	end;
 }
 
--	script	Balance_Flag	-1,{
+-	script	Balance_Flag	FAKE_NPC,{
 	end;
 
 OnBGStart:

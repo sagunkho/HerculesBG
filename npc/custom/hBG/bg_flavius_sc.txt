@@ -8,7 +8,7 @@
  * Description: Hercules Battlegrounds plugin.
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
--	script	Flavius_SC	-1,{
+-	script	Flavius_SC	FAKE_NPC,{
 	end;
 
 OnGuillaumeQuit:

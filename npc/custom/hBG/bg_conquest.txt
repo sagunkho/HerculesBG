@@ -8,7 +8,7 @@
  * Description: Hercules Battlegrounds plugin.
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
--	script	Conquest	-1,{
+-	script	Conquest	FAKE_NPC,{
 	end;
 
 OnInit:
@@ -589,7 +589,7 @@ arug_cas08,333,154,4	script	Therapist in battle#cqb	4_F_SISTER,{
 // Battleground Respawn
 // *********************************************************************
 
--	script	Conquest_Respawn	-1,{
+-	script	Conquest_Respawn	FAKE_NPC,{
 	end;
 
 OnTimer24000:
