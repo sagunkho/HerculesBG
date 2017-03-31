@@ -21,10 +21,35 @@ bat_room	mapflag	nosave	SavePoint
 // This mapflag is required to join battleground queues.
 bat_room	mapflag	town
 
+function	script	get_arena_id	{
+    set .@arena$, getarg(0);
+    
+    if (strcmp(.@arena$, "Flavius_CTF") == 0) {
+        return 1;
+    } else if (strcmp(.@arena$, "Tierra_EOS") == 0) {
+        return 2;
+    } else if (strcmp(.@arena$, "Tierra_TI") == 0) {
+        return 3;
+    } else if (strcmp(.@arena$, "Flavius_TD") == 0) {
+        return 4;
+    } else if (strcmp(.@arena$, "Tierra_Boss") == 0) {
+        return 5;
+    } else if (strcmp(.@arena$, "Conquest") == 0) {
+        return 6;
+    } else if (strcmp(.@arena$, "Flavius_SC") == 0) {
+        return 7;
+    } else if (strcmp(.@arena$, "Tierra_DOM") == 0) {
+        return 8;
+    } else if (strcmp(.@arena$, "Rush") == 0) {
+        return 9;
+    }
+
+    return 0;
+}
 /**
  * Battleground Queue Handler
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
--	script	BG_Queue_Handler	FAKE_NPC,{
+-	script	BG_Queue_Handler	-1,{
 	end;
 
 OnInit:
@@ -42,8 +67,8 @@ OnInit:
 	setarray .BG_Color$[0],        "0x2F9F2D",       "0xAA00FF",        "0xFF0033",    "0x33FF99",   "0x3399FF",  "0xFFA500",    "0x9ACD32",    "0x4169E1",   "0xDDA0DD";
 
 	// Team Building Mode : 
-    // 0 = Lineal [Keeps parties together]
-    // 1 = Random
+	// 0 = Lineal [Keeps parties together]
+	// 1 = Random
 	set .TeamBuildingMode, 1;
 
 	// Battleground @commands (@joinbg, @leavebg).
@@ -72,21 +97,21 @@ OnInit:
 
 	set .BG_Arena$,.BG_Arenas$[$BG_Index];
 	initnpctimer; // Initiate rotation timer.
-    set .hBGEnabled$, "battle_configuration/hBG_enabled";
+	set .hBGEnabled$, "battle_configuration/hBG_enabled";
 	end;
 
 OnBGStartCommand: 
     setbattleflag .hBGEnabled$, 1;
     message strcharinfo(0),"Battlegrounds have been enabled.";
-    callsub OnEndArena;
+    goto OnEndArena;
 OnBGStopCommand:
     setbattleflag .hBGEnabled$, 0;
     message strcharinfo(0),"Battlegrounds have been disabled.";
     .@msg$ = "[Battlegrounds] Arenas and Queuing have been disabled by a Game Master.";
 	announce .@msg$, 0, 0x00FFFF, 0x190, 12, 100, 100;
     donpcevent .BG_Arena$+"::OnMatchEnd";
-    callsub OnEndArena;
-    
+    goto OnEndArena;
+
 // @joinbg
 OnDoJoin:
     if (!getbattleflag(.hBGEnabled$)) {
@@ -219,7 +244,7 @@ OnFFAQueueJoinEvent:
 /**
  * Battleground Recruiter
  */
--	script	BG_Register	FAKE_NPC,{
+-	script	BG_Register	-1,{
 	set .@name$, "[^FFA500Battle Recruiter^000000]";
 	if (getvariableofnpc(.Ready,"BG_Queue_Handler") == 0)
 		donpcevent "BG_Queue_Handler::OnInit";

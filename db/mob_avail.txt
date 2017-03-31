@@ -1,3 +1,4 @@
+/** Add the following to the end of your db/mob_avail.txt **/
 2100,1623,0
 2101,1768,0
 2102,1751,0

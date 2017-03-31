@@ -1,5 +1,5 @@
 /*
-* This file is a Hercules Plugin.
+* This file is part of a Hercules Plugin library.
 * http://herc.ws - http://github.com/HerculesWS/Hercules
 *  __                 _
 * / _\_ __ ___   ___ | | _______  ___   _ ____
@@ -7,11 +7,23 @@
 * _\ \ | | | | | (_) |   <  __/>  <| |_| |/ /
 * \__/_| |_| |_|\___/|_|\_\___/_/\_\\__, /___|
 *                                   |___/
-* Copyright (c) 2016 Smokexyz.
-* All rights reserved.
 *
-* hBattlegrounds (Hercules Battlegrounds)
+* Copyright (c) 2017 Smokexyz (sagunkho@hotmail.com)
+* 
+* Hercules is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License <http://www.gnu.org/licenses/> for
+* more details.
+* * * * * * * * * * * * * * * * * * * * * * * * *
+* Hercules Battlegrounds Plugin by [Smokexyz]
 * * * * * * * * * * * * * * * * * * * * * * * * */
+
 #include "common/hercules.h" /* Should always be the first Hercules file included! */
 
 #include "common/memmgr.h"
@@ -21,7 +33,9 @@
 #include "common/nullpo.h"
 #include "common/timer.h"
 #include "common/utils.h"
+#include "common/sql.h"
 
+#include "map/chrif.h"
 #include "map/atcommand.h"
 #include "map/clif.h"
 #include "map/pc.h"
@@ -41,6 +55,9 @@
 #include "map/skill.h"
 #include "map/battleground.h"
 
+#include "char/mapif.h"
+#include "char/inter.h"
+
 #include "plugins/HPMHooking.h" /* Hooking Macros */
 #include "common/HPMDataCheck.h" /* should always be the last Hercules file included! */
 
@@ -56,7 +73,7 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #define add2limit(a, b, max) \
 	do { \
-		if( (max - a) < b ) { \
+		if ((max - a) < b) { \
 			a = max; \
 		} else { \
 			a += b; \
@@ -65,7 +82,7 @@
 
 #define sub2limit(a, b, min) \
 	do { \
-		if( (b + min) > a ) { \
+		if ((b + min) > a) { \
 			a = min; \
 		} else { \
 			a -= b; \
@@ -79,8 +96,8 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 HPExport struct hplugin_info pinfo = {
 	"Hercules Battlegrounds",    // Plugin name
-	SERVER_TYPE_MAP, // Server Type
-	"0.2",       // Plugin version
+	SERVER_TYPE_MAP | SERVER_TYPE_CHAR, // Server Type
+	"1.0a",       // Plugin version
 	HPM_VERSION, // HPM Version (automatically updated)
 };
 
@@ -125,8 +142,6 @@ static unsigned int hBG_queue_counter = 0;
  */
 int hBG_idle_announce,
 	hBG_idle_autokick,
-	hBG_reserved_char_id,
-	hBG_items_on_pvp,
 	hBG_reward_rates,
 	hBG_ranked_mode,
 	hBG_reportafk_leaderonly,
@@ -143,6 +158,28 @@ enum bg_fame_list_types
 {
 	BG_NORMAL,
 	BG_RANKED
+};
+
+/**
+ * Inter-server communication packet IDs.
+ */
+enum inter_packet_types {
+	PACKET_INTER_BG_STATS_SAVE =  0x9000,
+	PACKET_INTER_BG_STATS_REQ,
+	PACKET_MAP_BG_STATS_GET,
+};
+
+enum bg_mob_types {
+	BARRICADE_        = 1906,
+	OBJ_NEUTRAL       = 1911,
+	E_BAPHOMET2       = 2100,
+	E_LORD_OF_DEATH2,
+	E_DARK_LORD,
+	E_KTULLANUX,
+	E_DARK_SNAKE_LORD,
+	E_TURTLE_GENERAL,
+	E_APOCALIPS_H,
+	E_FALLINGBISHOP,
 };
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -179,10 +216,9 @@ struct hBG_queue_member
 struct hBG_stats
 {
 	unsigned int
-	top_damage,
-	damage_done,
-	damage_received,
-	boss_damage;
+	best_damage,
+	total_damage_done,
+	total_damage_received;
 	
 	unsigned short
 	// Triple Inferno
@@ -201,6 +237,7 @@ struct hBG_stats
 	boss_wins,
 	boss_lost,
 	boss_tie,
+	boss_damage,
 	// Tierra Domination
 	dom_bases,
 	dom_off_kills,
@@ -217,27 +254,28 @@ struct hBG_stats
 	// Flavius SC
 	sc_stolen,
 	sc_captured,
-	sc_droped,
+	sc_dropped,
 	sc_wins,
 	sc_lost,
 	sc_tie,
 	// Flavius CTF
 	ctf_taken,
 	ctf_captured,
-	ctf_droped,
+	ctf_dropped,
 	ctf_wins,
 	ctf_lost,
 	ctf_tie,
 	// Conquest
-	emperium_kill,
-	barricade_kill,
-	gstone_kill,
-	cq_wins,
-	cq_lost,
+	emperium_kills,
+	barricade_kills,
+	guardian_stone_kills,
+	conquest_wins,
+	conquest_losses,
 	// Rush
 	ru_captures,
 	ru_wins,
-	ru_lost;
+	ru_lost,
+	ru_skulls;
 	
 	unsigned int // Ammo
 	sp_heal_potions,
@@ -260,16 +298,16 @@ struct hBG_stats
 	unsigned short
 	kill_count,
 	death_count,
-	win, lost, tie,
-	leader_win,
-	leader_lost,
-	leader_tie,
-	deserter,
-	rank_games;
+	wins, losses, ties,
+	wins_as_leader,
+	losses_as_leader,
+	ties_as_leader,
+	total_deserted,
+	ranked_games;
 	
 	int score,
 	points,
-	rank_points;
+	ranked_points;
 };
 
 /**
@@ -469,14 +507,14 @@ void hBG_send_guild_skillinfo(struct map_session_data* sd)
 	WFIFOHEAD(fd, 6 + MAX_GUILDSKILL*37);
 	WFIFOW(fd,0) = 0x0162;
 	WFIFOW(fd,4) = g->skill_point;
-	for(i = 0, c = 0; i < MAX_GUILDSKILL; i++) {
+	for (i = 0, c = 0; i < MAX_GUILDSKILL; i++) {
 		if(g->skill[i].id > 0 && guild->check_skill_require(g, g->skill[i].id)) {
 			int id = g->skill[i].id;
 			int p = 6 + c*37;
 			WFIFOW(fd,p+0) = id;
 			WFIFOL(fd,p+2) = skill->get_inf(id);
 			WFIFOW(fd,p+6) = g->skill[i].lv;
-			if ( g->skill[i].lv ) {
+			if ( g->skill[i].lv) {
 				WFIFOW(fd, p + 8) = skill->get_sp(id, g->skill[i].lv);
 				WFIFOW(fd, p + 10) = skill->get_range(id, g->skill[i].lv);
 			} else {
@@ -509,7 +547,7 @@ void hBG_guild_window_info(struct map_session_data *sd)
 	
 	fd = sd->fd;
 	
-	if( (g = hBG_get_guild(sd->bg_id)) == NULL || packet == NULL )
+	if ((g = hBG_get_guild(sd->bg_id)) == NULL || packet == NULL)
 		return;
 	
 	WFIFOHEAD(fd, packet->len); // Hardcoded Length
@@ -585,10 +623,13 @@ void hBG_send_guild_member_list(struct map_session_data *sd)
 	WFIFOHEAD(fd, bgd->count * 104 + 4);
 	WFIFOW(fd, 0) = 0x154;
 
-	for(i = 0, c = 0; i < bgd->count; i++) {
+	for (i = 0, c = 0; i < bgd->count; i++) {
 		struct hBG_map_session_data *hBGsd;
 
-		if ((psd = bgd->members[i].sd) == NULL || (hBGsd = getFromMSD(psd, 1)) == NULL)
+		if ((psd = bgd->members[i].sd) == NULL)
+			continue;
+
+		if ((hBGsd = getFromMSD(psd, 1)) == NULL)
 			continue;
 
 		WFIFOL(fd,c*104+ 4) = psd->status.account_id;
@@ -767,7 +808,7 @@ void hBG_update_score_team(struct battleground_data *bgd)
 	WBUFW(buf,2) = hBGd->team_score;
 	WBUFW(buf,4) = hBG_mf->hBG_topscore;
 
-	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+	for (i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((sd = bgd->members[i].sd) == NULL || sd->bl.m != m)
 			continue;
 
@@ -1005,11 +1046,12 @@ int hBG_queue_join(struct map_session_data *sd, int q_id)
 {
 	char output[128];
 	struct hBG_queue_data *hBGqd;
-	int i;
+	int i = 0;
+	int login_ip_count = hBG_config_get("battle_configuration/hBG_ip_check");
 	
 	nullpo_ret(sd);
 	
-	if (hBG_config_get("battle_configuration/hBG_from_town_only") && !map->list[sd->bl.m].flag.town) {
+	if (hBG_config_get("battle_configuration/hBG_from_town_only") && map->list[sd->bl.m].flag.town == 0) {
 		clif->message(sd->fd,"You only can join BG queues from Towns or BG Waiting Room.");
 		return 0;
 	} else if (sd->bg_id) {
@@ -1030,8 +1072,8 @@ int hBG_queue_join(struct map_session_data *sd, int q_id)
 		sprintf(output,"You cannot join %s queue. Required min level is %ud.", hBGqd->queue_name, hBGqd->min_level);
 		clif->message(sd->fd,output);
 		return 0;
-	} else if (hBG_config_get("battle_configuration/hBG_ip_check") && hBG_countlogin(sd,false) > 0) {
-		sprintf(output,"You cannot join %s queue. Double Login detected.", hBGqd->queue_name);
+	} else if (login_ip_count && hBG_countlogin(sd,false) > login_ip_count) {
+		sprintf(output,"You cannot join %s queue. A max of %d characters are using your IP address.", hBGqd->queue_name, login_ip_count);
 		clif->message(sd->fd,output);
 		return 0;
 	}
@@ -1045,7 +1087,7 @@ int hBG_queue_join(struct map_session_data *sd, int q_id)
 	if (hBGqd->join_event[0])
 		npc->event_do(hBGqd->join_event);
 
-	return 1;
+	return i;
 }
 
 /**
@@ -1106,7 +1148,7 @@ int hBG_countlogin(struct map_session_data *sd, bool check_bat_room)
 	nullpo_ret(sd);
 
 	iter = mapit_getallusers();
-	for(pl_sd = (TBL_PC*)mapit->first(iter); mapit->exists(iter); pl_sd = (TBL_PC*)mapit->next(iter)) {
+	for (pl_sd = (TBL_PC*)mapit->first(iter); mapit->exists(iter); pl_sd = (TBL_PC*)mapit->next(iter)) {
 		if (!(getFromMSD(sd, 0) || map->list[pl_sd->bl.m].flag.battleground || (check_bat_room && pl_sd->bl.m == m)))
 			continue;
 		if (sockt->session[sd->fd]->client_addr == sockt->session[pl_sd->fd]->client_addr)
@@ -1182,7 +1224,7 @@ int hBG_team_join(int bg_id, struct map_session_data *sd)
 		return 0; // No free slots
 
 	// Handle Additional Map Session BG data
-	if (!(hBGsd = getFromMSD(sd, 1))) {
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL) {
 		CREATE(hBGsd, struct hBG_map_session_data, 1);
 		addToMSD(sd, hBGsd, 1, false);
 	}
@@ -1218,7 +1260,7 @@ int hBG_team_join(int bg_id, struct map_session_data *sd)
 	
 	clif->charnameupdate(sd); // Update character's nameplate
 	
-	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+	for (i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((pl_sd = bgd->members[i].sd) == NULL)
 			continue;
 
@@ -1330,9 +1372,6 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 	else if ((hBGd = getFromBGDATA(bgd, 0)) == NULL)
 		return 0;
 
-	if (bgd && bgd->logout_event[0] && flag)
-		npc->event(sd, bgd->logout_event, 0);
-
 	// Packets
 	hBG_send_dot_remove(sd);
 	
@@ -1369,7 +1408,7 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 	ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd == sd);
 
 	if (i < MAX_BG_MEMBERS) // Removes member from BG
-		memset(&bgd->members[i], 0, sizeof(bgd->members[0]));
+		memset(&bgd->members[i], 0, sizeof(struct battleground_member_data));
 	
 	ARR_FIND(0, MAX_BG_MEMBERS, i, hBGd->g->member[i].sd == sd);
 	
@@ -1379,10 +1418,8 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 	if (hBGd->leader_char_id == sd->status.char_id)
 		hBGd->leader_char_id = 0;
 	
-	//unit->remove_map_pc(sd, CLR_RESPAWN); // [Vykimo] Simulating the warp effect for disconnecting
-	
 	if (--bgd->count > 0) {
-		for(i = 0; i < MAX_BG_MEMBERS; i++) { // Update other BG members
+		for (i = 0; i < MAX_BG_MEMBERS; i++) { // Update other BG members
 			if ((pl_sd = bgd->members[i].sd) == NULL)
 				continue;
 			
@@ -1391,7 +1428,7 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 				clif->charnameupdate(pl_sd);
 			}
 			
-			switch(flag) {
+			switch (flag) {
 				case 3: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Status..."); break;
 				case 2: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Report..."); break;
 				case 1: hBG_send_expulsion(pl_sd, sd->status.name, "User has quit the game..."); break;
@@ -1404,6 +1441,9 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 		}
 	}
 
+	if (bgd && bgd->logout_event[0] && flag)
+		npc->event(sd, bgd->logout_event, 0);
+	
 	return bgd->count;
 }
 
@@ -1440,7 +1480,7 @@ int hBG_team_finalize(int bg_id, bool remove)
 	if (bgd == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
 		return 0;
 
-	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+	for (i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((sd = bgd->members[i].sd) == NULL)
 			continue;
 
@@ -1506,7 +1546,7 @@ void hBG_team_getitem(int bg_id, int nameid, int amount)
 	it.nameid = nameid;
 	it.identify = 1;
 
-	for(j = 0; j < MAX_BG_MEMBERS; j++) {
+	for (j = 0; j < MAX_BG_MEMBERS; j++) {
 		if ((sd = bgd->members[j].sd) == NULL)
 			continue;
 
@@ -1534,7 +1574,7 @@ void hBG_team_get_kafrapoints(int bg_id, int amount)
 	if (reward_rate != 100)
 		amount = amount * reward_rate/ 100;
 
-	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+	for (i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((sd = bgd->members[i].sd) == NULL)
 			continue;
 
@@ -1550,11 +1590,11 @@ void hBG_add_rank_points(struct map_session_data *sd, int ranktype, int count)
 	
 	nullpo_retv(sd);
 	
-	if ((hBGsd = getFromBGDATA(sd, 1)) == NULL)
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL)
 		return;
 	
 	if (ranktype == BG_RANKED) {
-		add2limit(hBGsd->stats.rank_points, count, MAX_FAME);
+		add2limit(hBGsd->stats.ranked_points, count, MAX_FAME);
 		sprintf(message, "[Battlegrounds Ranked] Your ranking has increased by %d.", count);
 		clif->disp_message(&sd->bl, message, SELF);
 		hookStop();
@@ -1591,7 +1631,7 @@ void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int qu
 	
 	memset(&it,0,sizeof(it));
 	
-	bg_result = cap_value(bg_result,0,2);
+	bg_result = cap_value(bg_result, 0, 2);
 	
 	if (nameid == 7828 || nameid == 7829 || nameid == 7773) {
 		it.nameid = nameid;
@@ -1600,7 +1640,7 @@ void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int qu
 		nameid = 0;
 	}
 
-	for(j = 0; j < MAX_BG_MEMBERS; j++) {
+	for (j = 0; j < MAX_BG_MEMBERS; j++) {
 		if ((sd = bgd->members[j].sd) == NULL)
 			continue;
 		else if ((hBGsd = getFromMSD(sd, 1)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
@@ -1627,10 +1667,10 @@ void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int qu
 		
 		switch (bg_result) {
 			case 0: // Won
-				add2limit(hBGsd->stats.win,1,USHRT_MAX);
+				add2limit(hBGsd->stats.wins,1,USHRT_MAX);
 				fame = 100;
-				if( sd->status.char_id == hBGd->leader_char_id ) {
-					add2limit(hBGsd->stats.leader_win,1,USHRT_MAX);
+				if (sd->status.char_id == hBGd->leader_char_id) {
+					add2limit(hBGsd->stats.wins_as_leader,1,USHRT_MAX);
 					fame += 25;
 				}
 				
@@ -1656,7 +1696,7 @@ void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int qu
 						add2limit(hBGsd->stats.sc_wins,1,USHRT_MAX);
 						break;
 					case 6:
-						add2limit(hBGsd->stats.cq_wins,1,USHRT_MAX);
+						add2limit(hBGsd->stats.conquest_wins,1,USHRT_MAX);
 						break;
 					case 7:
 						add2limit(hBGsd->stats.ru_wins,1,USHRT_MAX);
@@ -1667,10 +1707,10 @@ void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int qu
 				}
 				break;
 			case 1: // Tie
-				add2limit(hBGsd->stats.tie,1,USHRT_MAX);
+				add2limit(hBGsd->stats.ties,1,USHRT_MAX);
 				fame = 75;
-				if( sd->status.char_id == hBGd->leader_char_id ) {
-					add2limit(hBGsd->stats.leader_tie,1,USHRT_MAX);
+				if (sd->status.char_id == hBGd->leader_char_id) {
+					add2limit(hBGsd->stats.ties_as_leader,1,USHRT_MAX);
 					fame += 10;
 				}
 				hBG_add_rank_points(sd, fame, type);
@@ -1686,12 +1726,12 @@ void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int qu
 				}
 				break;
 			case 2: // Lost
-				add2limit(hBGsd->stats.lost,1,USHRT_MAX);
+				add2limit(hBGsd->stats.losses,1,USHRT_MAX);
 				
 				fame = 50;
 				
-				if( sd->status.char_id == hBGd->leader_char_id )
-					add2limit(hBGsd->stats.leader_lost,1,USHRT_MAX);
+				if (sd->status.char_id == hBGd->leader_char_id)
+					add2limit(hBGsd->stats.losses_as_leader,1,USHRT_MAX);
 				
 				hBG_add_rank_points(sd, fame, type);
 				
@@ -1702,7 +1742,7 @@ void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int qu
 					case 3: add2limit(hBGsd->stats.ctf_lost,1,USHRT_MAX); break;
 					case 4: add2limit(hBGsd->stats.td_lost,1,USHRT_MAX); break;
 					case 5: add2limit(hBGsd->stats.sc_lost,1,USHRT_MAX); break;
-					case 6: add2limit(hBGsd->stats.cq_lost,1,USHRT_MAX); break;
+					case 6: add2limit(hBGsd->stats.conquest_losses,1,USHRT_MAX); break;
 					case 7: add2limit(hBGsd->stats.ru_lost,1,USHRT_MAX); break;
 					case 8: add2limit(hBGsd->stats.dom_lost,1,USHRT_MAX); break;
 				}
@@ -1721,7 +1761,7 @@ void hBG_build_guild_data(void)
 	int i, j, k, gskill;
 	memset(&bg_guild, 0, sizeof(bg_guild));
 
-	for(i = 1; i <= MAX_BATTLEGROUND_TEAMS; i++) { // Emblem Data - Guild ID's
+	for (i = 1; i <= MAX_BATTLEGROUND_TEAMS; i++) { // Emblem Data - Guild ID's
 		FILE* fp = NULL;
 		char gpath[256];
 
@@ -1733,10 +1773,10 @@ void hBG_build_guild_data(void)
 
 		// Skills
 		if (j < 3) { // Clan Skills
-			for(k = 0; k < MAX_GUILDSKILL; k++) {
+			for (k = 0; k < MAX_GUILDSKILL; k++) {
 				gskill = k + GD_SKILLBASE;
 				bg_guild[j].skill[k].id = gskill;
-				switch(gskill) {
+				switch (gskill) {
 					case GD_GLORYGUILD:
 						bg_guild[j].skill[k].lv = 0;
 						break;
@@ -1816,8 +1856,6 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 {
 	struct battleground_data *bgd = DB->data2ptr(data);
 	struct hBG_data *hBGd = getFromBGDATA(bgd, 0);
-	struct hBG_map_session_data *hBGsd = NULL;
-	struct map_session_data *sd = NULL;
 	char output[128];
 	int i, m, idle_announce = hBG_config_get("battle_configuration/hBG_idle_announce"),
 		idle_autokick = hBG_config_get("battle_configuration/hBG_idle_autokick");
@@ -1828,10 +1866,13 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 	m = map->mapindex2mapid(bgd->mapindex);
 	hBGd->reveal_flag = !hBGd->reveal_flag; // Switch
 
-	for(i = 0; i < MAX_BG_MEMBERS; i++) {
-		if ((sd = bgd->members[i].sd) == NULL || (hBGsd = getFromMSD(sd, 1)) == NULL)
+	for (i = 0; i < MAX_BG_MEMBERS; i++) {
+		struct map_session_data *sd = bgd->members[i].sd;
+		struct hBG_map_session_data *hBGsd = NULL;
+
+		if (sd == NULL || (hBGsd = getFromMSD(sd, 1)) == NULL)
 			continue;
-		
+
 		if (idle_autokick && DIFF_TICK(sockt->last_tick, sd->idletime) >= idle_autokick
 			&& hBGd->g && map->list[sd->bl.m].flag.battleground)
 		{
@@ -1839,8 +1880,8 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 			clif->broadcast2(&sd->bl, output, (int)strlen(output)+1, hBGd->color, 0x190, 20, 0, 0, BG);
 
 			hBG_team_leave(sd,3);
-			
-			clif->message(sd->fd, "You have been kicked from Battleground because of your AFK status.");
+
+			clif->message(sd->fd, "You have been kicked from the battleground because of your AFK status.");
 			pc->setpos(sd, sd->status.save_point.map, sd->status.save_point.x, sd->status.save_point.y, 3);
 			continue;
 		} else if (sd->bl.x != bgd->members[i].x || sd->bl.y != bgd->members[i].y) { // xy update
@@ -1895,12 +1936,12 @@ int hBG_addflooritem_area(struct block_list* bl, int16 m, int16 x, int16 y, int 
 	item_tmp.nameid = nameid;
 	item_tmp.identify = 1;
 	
-	if (bl != NULL ) m = bl->m;
+	if (bl != NULL) m = bl->m;
 	
 	count = 0;
 	range = (int)sqrt((float)amount) +2;
 	
-	for( i = 0; i < amount; i++) {
+	for ( i = 0; i < amount; i++) {
 		if (bl != NULL)
 			map->search_freecell(bl, 0, &mx, &my, range, range, 0);
 		else {
@@ -1915,14 +1956,6 @@ int hBG_addflooritem_area(struct block_list* bl, int16 m, int16 x, int16 y, int 
 }
 
 // @TODO
-void hBG_char_tosql(struct map_session_data *sd)
-{
-	struct hBG_map_session_data *hBGsd = NULL;
-	
-	if ((hBGsd = getFromMSD(sd, 0)) == NULL)
-		return;
-}
-
 void hBG_bg_ranking_display(struct map_session_data *sd, bool ranked)
 {
 	struct hBG_map_session_data *hBGsd = NULL;
@@ -1934,6 +1967,100 @@ void hBG_bg_ranking_display(struct map_session_data *sd, bool ranked)
 	
 	// print shit.
 	
+}
+
+void hBG_record_mobkills(struct map_session_data *sd, struct mob_data *md)
+{
+	struct battleground_data *bgd = NULL;
+	struct hBG_data *hBGd = NULL;
+	struct hBG_map_session_data *hBGsd = NULL;
+
+	nullpo_retv(sd);
+	nullpo_retv(md);
+
+	if (map->list[sd->bl.m].flag.battleground && sd->bg_id) {
+		int i;
+		if ((bgd = bg->team_search(sd->bg_id)) == NULL)
+			return;
+		if ((hBGd = getFromBGDATA(bgd, 0)) == NULL)
+			return;
+		if ((hBGsd = getFromMSD(sd, 1)) == NULL)
+			return;
+
+		ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd == sd);
+
+		if (i >= MAX_BG_MEMBERS)
+			return;
+
+		switch ( md->class_)
+		{
+		case E_BAPHOMET2:
+		case E_LORD_OF_DEATH2:
+		case E_DARK_LORD:
+		case E_KTULLANUX:
+		case E_DARK_SNAKE_LORD:
+			add2limit(hBGsd->stats.boss_killed, 1, USHRT_MAX);
+			break;
+		case E_TURTLE_GENERAL:
+		case E_APOCALIPS_H:
+			add2limit(hBGsd->stats.guardian_stone_kills, 1, USHRT_MAX);
+			break;
+		case E_FALLINGBISHOP:
+			if (map->list[sd->bl.m].flag.battleground == 2)
+				add2limit(hBGsd->stats.ru_captures, 1, USHRT_MAX);
+			break;
+		case OBJ_NEUTRAL:
+			if (strcmpi(map->list[sd->bl.m].name, "bat_a03") == 0)
+				add2limit(hBGsd->stats.boss_flags, 1, USHRT_MAX);
+			break;
+		case BARRICADE_:
+			if (strcmpi(map->list[sd->bl.m].name, "bat_a01") == 0)
+				add2limit(hBGsd->stats.barricade_kills, 1, USHRT_MAX);
+			break;
+		}
+	}
+}
+
+void hBG_record_damage(struct block_list *src, struct block_list *target, int damage)
+{
+	struct block_list *s_bl = NULL;
+	struct map_session_data *sd = NULL, *tsd = NULL;
+	struct hBG_map_session_data *hBGsd = NULL, *hBGtsd = NULL;
+
+	if (!src || !target || src == target || damage <= 0)
+		return;
+
+	if ((s_bl = battle->get_master(src)) == NULL)
+		s_bl = src;
+
+	if (s_bl->type != BL_PC)
+		return;
+
+	if ((sd = BL_UCAST(BL_PC, s_bl)) == NULL || (tsd = BL_UCAST(BL_PC, target)) == NULL)
+		return;
+
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL || (hBGtsd = getFromMSD(tsd, 1)) == NULL)
+		return;
+
+	switch ( target->type)
+	{
+	case BL_PC:
+		if (map->list[src->m].flag.battleground && sd->bg_id) {
+			add2limit(hBGsd->stats.total_damage_done, damage, UINT_MAX);
+			add2limit(hBGtsd->stats.total_damage_received, damage, UINT_MAX);
+
+			if (hBGsd->stats.best_damage < damage)
+				hBGsd->stats.best_damage = damage;
+		}
+		break;
+	case BL_MOB:
+		{
+			struct mob_data *md = BL_UCAST(BL_MOB, target);
+			if (map->list[src->m].flag.battleground && sd->bg_id && md->class_ >= E_BAPHOMET2 && md->class_ <= E_FALLINGBISHOP)
+				add2limit(hBGsd->stats.boss_damage, damage, USHRT_MAX);
+		}
+		break;
+	}
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -2067,29 +2194,29 @@ BUILDIN(hBG_logincount)
  * @param map_y Respawn Map Y
  * @param guild_index BG Guild Index
  * @param ev Logout Event
- * @paran dev Die Event
+ * @param dev Die Event
  */
 BUILDIN(hBG_team_create)
 {
 	const char *map_name, *ev = "", *dev = "";
 	int x, y, m = 0, guild_index, bg_id;
 
-	map_name = script_getstr(st,2);
+	map_name = script_getstr(st, 2);
 	if (strcmp(map_name,"-") != 0 && (m = mapindex->name2id(map_name)) == 0) {
-		script_pushint(st,0);
+		script_pushint(st, 0);
 		return false;
 	}
 
-	x = script_getnum(st,3);
-	y = script_getnum(st,4);
-	guild_index = script_getnum(st,5);
-	ev = script_getstr(st,6); // Logout Event
-	dev = script_getstr(st,7); // Die Event
+	x = script_getnum(st, 3);
+	y = script_getnum(st, 4);
+	guild_index = script_getnum(st, 5);
+	ev = script_getstr(st, 6); // Logout Event
+	dev = script_getstr(st, 7); // Die Event
 
 	guild_index = cap_value(guild_index, 0, 12);
 	bg_id = hBG_create(m, x, y, guild_index, ev, dev);
 
-	script_pushint(st,bg_id);
+	script_pushint(st, bg_id);
 	return true;
 }
 
@@ -2103,16 +2230,16 @@ BUILDIN(hBG_team_create)
 BUILDIN(hBG_queue_create)
 {
 	const char *queue_name, *jev;
-	int q_id, min_level = 0;
+	int min_level = 0;
 
-	queue_name = script_getstr(st,2);
-	jev = script_getstr(st,3);
+	queue_name = script_getstr(st, 2);
+	jev = script_getstr(st, 3);
 	
-	if (script_hasdata(st,4))
-		min_level = script_getnum(st,4);
+	if (script_hasdata(st, 4))
+		min_level = script_getnum(st, 4);
 
-	q_id = hBG_queue_create(queue_name,jev,min_level);
-	script_pushint(st,q_id);
+	script_pushint(st, hBG_queue_create(queue_name, jev, min_level));
+
 	return true;
 }
 
@@ -2129,11 +2256,17 @@ BUILDIN(hBG_queue_event)
 	int q_id;
 
 	q_id = script_getnum(st,2);
-	if ((hBGqd = hBG_queue_search(q_id)) == NULL)
-		return true;
+
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	join_event = script_getstr(st,3);
+
 	safestrncpy(hBGqd->join_event, join_event, sizeof(hBGqd->join_event));
+
+	script_pushint(st, 1);
 	return true;
 }
 
@@ -2145,10 +2278,12 @@ BUILDIN(hBG_queue_join)
 {
 	int q_id;
 	struct map_session_data *sd = script->rid2sd(st);
-	if (!sd) return true;
+
+	nullpo_retr(false, sd);
 
 	q_id = script_getnum(st,2);
-	hBG_queue_join(sd, q_id);
+
+	script_pushint(st, hBG_queue_join(sd, q_id));
 
 	return true;
 }
@@ -2165,16 +2300,26 @@ BUILDIN(hBG_queue_partyjoin)
 	struct party_data *p;
 
 	party_id = script_getnum(st,2);
-	if (!party_id || (p = party->search(party_id)) == NULL) return true;
+
+	if (party_id <= 0 || (p = party->search(party_id)) == NULL) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	q_id = script_getnum(st,3);
-	if (!hBG_queue_search(q_id)) return true;
 
-	for(i = 0; i < MAX_PARTY; i++) {
+	if (hBG_queue_search(q_id) == NULL) {
+		script_pushint(st, 0);
+		return false;
+	}
+
+	for (i = 0; i < MAX_PARTY; i++) {
 		if ((sd = p->data[i].sd) == NULL)
 			continue;
 		hBG_queue_join(sd,q_id);
 	}
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -2187,11 +2332,13 @@ BUILDIN(hBG_queue_leave)
 {
 	int q_id;
 	struct map_session_data *sd = script->rid2sd(st);
-	if (!sd) return true;
+
+	nullpo_retr(false, sd);
 
 	q_id = script_getnum(st,2);
-	hBG_queue_leave(sd, q_id);
-	
+
+	script_pushint(st, hBG_queue_leave(sd, q_id));
+
 	return true;
 }
 
@@ -2208,13 +2355,12 @@ BUILDIN(hBG_queue_data)
 	int q_id = script_getnum(st,2),
 	type = script_getnum(st,3);
 
-	if ((hBGqd = hBG_queue_search(q_id)) == NULL)
-	{
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL) {
 		script_pushint(st,0);
-		return true;
+		return false;
 	}
 
-	switch(type) {
+	switch (type) {
 		case 0: script_pushint(st, hBGqd->users); break;
 		case 1: // User List
 		{
@@ -2237,6 +2383,7 @@ BUILDIN(hBG_queue_data)
 			break;
 	}
 
+	script_pushint(st, 0);
 	return true;
 }
 
@@ -2261,16 +2408,16 @@ BUILDIN(hBG_queue2team)
 
 	q_id = script_getnum(st,2);
 	if ((hBGqd = hBG_queue_search(q_id)) == NULL) {
-		script_pushint(st,0);
-		return true;
+		script_pushint(st, 0);
+		return false;
 	}
 
 	max = script_getnum(st,3);
 	map_name = script_getstr(st,4);
 
 	if (strcmp(map_name,"-") != 0 && (m = mapindex->name2id(map_name)) == 0) {
-		script_pushint(st,0);
-		return true;
+		script_pushint(st, 0);
+		return false;
 	}
 
 	x = script_getnum(st,5);
@@ -2280,23 +2427,27 @@ BUILDIN(hBG_queue2team)
 	dev = script_getstr(st,9); // Die Event
 
 	guild_index = cap_value(guild_index, 0, 12);
-	if ((bg_id = hBG_create(m, x, y, guild_index, ev, dev)) == 0) { // Creation failed
-		script_pushint(st,0);
-		return true;
+
+	if ((bg_id = hBG_create(m, x, y, guild_index, ev, dev)) == 0) {
+		script_pushint(st, 0);
+		return false;
 	}
 
 	i = 0; // Counter
 	while ((qm = hBGqd->first) != NULL && i < max && i < MAX_BG_MEMBERS) {
 		if (qm->sd && hBG_team_join(bg_id, qm->sd)) {
 			mapreg->setreg(reference_uid(script->add_str("$@arenamembers"), i), qm->sd->bl.id);
-			hBG_queue_member_remove(hBGqd,qm->sd->bl.id);
+			hBG_queue_member_remove(hBGqd, qm->sd->bl.id);
 			i++;
+		} else {
+			break; // Failed? Should not. Anyway, to avoid a infinite loop
 		}
-		else break; // Failed? Should not. Anyway, to avoid a infinite loop
 	}
 
 	mapreg->setreg(script->add_str("$@arenamembersnum"), i);
-	script_pushint(st,bg_id);
+
+	script_pushint(st, bg_id);
+
 	return true;
 }
 
@@ -2316,20 +2467,28 @@ BUILDIN(hBG_queue2team_single)
 	int x, y, m, bg_id, q_id;
 
 	q_id = script_getnum(st,2);
-	if ((hBGqd = hBG_queue_search(q_id)) == NULL || !hBGqd->first || !hBGqd->first->sd)
-		return true;
 
-	bg_id = script_getnum(st,3);
-	map_name = script_getstr(st,4);
-	if ((m = mapindex->name2id(map_name)) == 0)
-		return true; // Invalid Map
-	x = script_getnum(st,5);
-	y = script_getnum(st,6);
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL || !hBGqd->first || !hBGqd->first->sd) {
+		script_pushint(st, 0);
+		return false;
+	}
+
+	bg_id = script_getnum(st, 3);
+	map_name = script_getstr(st, 4);
+
+	if ((m = mapindex->name2id(map_name)) == 0) {
+		script_pushint(st, 0);
+		return false;
+	}
+
+	x = script_getnum(st, 5);
+	y = script_getnum(st, 6);
 	sd = hBGqd->first->sd;
 
-	if (hBG_team_join(bg_id,sd)) {
+	if (hBG_team_join(bg_id, sd)) {
 		hBG_queue_member_remove(hBGqd, sd->bl.id);
 		pc->setpos(sd, m, x, y, CLR_TELEPORT);
+		script_pushint(st, 1);
 	}
 
 	return true;
@@ -2348,6 +2507,7 @@ BUILDIN(hBG_queue_checkstart)
 	struct hBG_queue_data *hBGqd;
 
 	q_id = script_getnum(st,2);
+
 	if ((hBGqd = hBG_queue_search(q_id)) != NULL) {
 		int type, req_min, teams;
 
@@ -2355,10 +2515,9 @@ BUILDIN(hBG_queue_checkstart)
 		teams = script_getnum(st,4);
 		req_min = script_getnum(st,5);
 
-		switch(type) {
+		switch (type) {
 			case 0: // Lineal, as they Join
 			case 1: // Random
-			case 2: // Class Balance
 				if (hBGqd->users >= (req_min * teams))
 					result = 1;
 				break;
@@ -2368,7 +2527,8 @@ BUILDIN(hBG_queue_checkstart)
 		}
 	}
 
-	script_pushint(st,result);
+	script_pushint(st, result);
+
 	return true;
 }
 
@@ -2389,8 +2549,9 @@ BUILDIN(hBG_queue2teams)
 
 	q_id = script_getnum(st,2); // Queue ID
 	if ((hBGqd = hBG_queue_search(q_id)) == NULL) {
-		ShowError("script:hBG_queue2teams: Non existant queue id received %d.\n", q_id);
-		return true;
+		ShowError("buildin_hBG_queue2teams: Non existant queue id received %d.\n", q_id);
+		script_pushint(st, 0);
+		return false;
 	}
 
 	min = script_getnum(st,3); // Min Members per Team
@@ -2401,27 +2562,34 @@ BUILDIN(hBG_queue2teams)
 	while (script_hasdata(st,t) && t < MAX_BATTLEGROUND_TEAMS+arg_offset) {
 		bg_id = script_getnum(st,t);
 		if (bg->team_search(bg_id) == NULL) {
-			ShowError("script:hBG_queue2teams: Non existant team id received %d.\n", bg_id);
-			return true;
+			ShowError("buildin_hBG_queue2teams: Non existant team Id received %d.\n", bg_id);
+			script_pushint(st, 0);
+			return false;
 		}
 		t++;
 	}
 	total_teams = t - arg_offset;
 
 	if (total_teams < 2) {
-		ShowError("script:hBG_queue2teams: Less than 2 teams received to build members.\n");
-		return true;
+		ShowError("buildin_hBG_queue2teams: Less than 2 teams received to build members.\n");
+		script_pushint(st, 0);
+		return false;
 	}
-	
+
+	if (hBGqd->users < min) {
+		ShowError("buildin_hBG_queue2teams: Less than minimum %d queue members received (%d).\n", min, (int) hBGqd->users);
+		script_pushint(st, 0);
+		return false;
+	}
 	// How many players are we going to take from the Queue
 	limit = min(max * total_teams, hBGqd->users);
 
-	switch(type) {
+	switch (type) {
 		case 0: // Lineal - Maybe to keep party together
 		{
 			t = 0;
 			int i = 0;
-			for(i = 0; i < limit; i++) {
+			for (i = 0; i < limit; i++) {
 				if ((i%(limit/total_teams)) == 0) // Switch Team
 					bg_id = script_getnum(st,t+arg_offset);
 				
@@ -2444,7 +2612,7 @@ BUILDIN(hBG_queue2teams)
 			int pos = 0, i=0;
 			struct hBG_queue_member *qm;
 
-			for(i=0; t < limit; i++) {
+			for (i=0; t < limit; i++) {
 				if ((i%(limit/total_teams)) == 0) // Switch Team
 					bg_id = script_getnum(st,t+arg_offset);
 
@@ -2464,6 +2632,8 @@ BUILDIN(hBG_queue2teams)
 			break;
 	}
 
+	script_pushint(st, 1);
+
 	return true;
 }
 
@@ -2471,7 +2641,8 @@ BUILDIN(hBG_queue2teams)
  * Fill teams with members from the given Queue.
  * @param Queue ID
  * @param Max Players Per Team
- * @param ... Team ID
+ * @param Balanceing method
+ * @param Team 1 ... Team 13
  */
 BUILDIN(hBG_balance_teams)
 {
@@ -2483,29 +2654,38 @@ BUILDIN(hBG_balance_teams)
 	bool balanced;
 
 	q_id = script_getnum(st,2);
-	if ((hBGqd = hBG_queue_search(q_id)) == NULL || hBGqd->users <= 0)
-		return true;
+
+	if ((hBGqd = hBG_queue_search(q_id)) == NULL || hBGqd->users <= 0) {
+		ShowError("buildin_hBG_balance_teams: Non existant Queue Id or the queue is empty.\n");
+		script_pushint(st, 0);
+		return false;
+	}
 
 	max = script_getnum(st,3);
-	if (max > MAX_BG_MEMBERS) max = MAX_BG_MEMBERS;
+	if (max > MAX_BG_MEMBERS)
+		max = MAX_BG_MEMBERS;
 	min = MAX_BG_MEMBERS + 1;
-	type = script_getnum(st,4);
+	type = script_getnum(st, 4);
 
 	i = 5; // Team IDs to build
 	
-	while (script_hasdata(st,i)) {
-		bg_id = script_getnum(st,i);
+	while (script_hasdata(st, i) && i-5 < 13) {
+		bg_id = script_getnum(st, i);
 		if ((bgd = bg->team_search(bg_id)) == NULL) {
-			ShowError("script:hBG_balance_teams: Non existant team id received %d.\n", bg_id);
-			return true;
+			ShowError("buildin_hBG_balance_teams: Non existant team id received %d.\n", bg_id);
+			script_pushint(st, 0);
+			return false;
 		}
 
-		if (bgd->count < min) min = bgd->count;
+		if (bgd->count < min)
+			min = bgd->count;
 		i++;
 	}
 
 	c = i - 5; // Teams Found
-	if (c < 2 || min >= max) return true; // No Balance Required
+
+	if (c < 2 || min >= max)
+		return true; // No Balance Required
 
 	if (type < 3) {
 		while ((head = hBGqd->first) != NULL && (sd = head->sd) != NULL) {
@@ -2514,7 +2694,7 @@ BUILDIN(hBG_balance_teams)
 			min = MAX_BG_MEMBERS + 1;
 
 			// Search the Current Minimum and Balance status
-			for(i = 0; i < c; i++) {
+			for (i = 0; i < c; i++) {
 				bg_id = script_getnum(st,i+5);
 				
 				if ((bgd = bg->team_search(bg_id)) == NULL)
@@ -2541,7 +2721,13 @@ BUILDIN(hBG_balance_teams)
 			if ((bgd = bg->team_search(m_bg_id)) != NULL && bgd->mapindex)
 				pc->setpos(sd, bgd->mapindex, bgd->x, bgd->y, CLR_TELEPORT); // Joins and Warps
 		}
+	} else {
+		ShowError("buildin_hBG_balance_teams: Invalid type %d given for argument #3.\n", type);
+		script_pushint(st, 0);
+		return false;
 	}
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -2564,30 +2750,33 @@ BUILDIN(hBG_waitingroom2bg)
 	struct map_session_data *sd;
 
 	nd = (struct npc_data *)map->id2bl(st->oid);
+
 	if (nd == NULL || (cd = (struct chat_data *)map->id2bl(nd->chat_id)) == NULL) {
-		script_pushint(st,0);
-		return true;
+		script_pushint(st, 0);
+		return false;
 	}
 
 	map_name = script_getstr(st,2);
-	if (strcmp(map_name,"-") != 0 && (m = mapindex->name2id(map_name)) == 0) {
-		script_pushint(st,0);
-		return true;
+
+	if (strcmp(map_name, "-") != 0 && (m = mapindex->name2id(map_name)) == 0) {
+		script_pushint(st, 0);
+		return false;
 	}
 
-	x = script_getnum(st,3);
-	y = script_getnum(st,4);
-	guild_index = script_getnum(st,5);
-	ev = script_getstr(st,6); // Logout Event
-	dev = script_getstr(st,7); // Die Event
+	x = script_getnum(st, 3);
+	y = script_getnum(st, 4);
+	guild_index = script_getnum(st, 5);
+	ev = script_getstr(st, 6); // Logout Event
+	dev = script_getstr(st, 7); // Die Event
 
 	guild_index = cap_value(guild_index, 0, 12);
+
 	if ((bg_id = hBG_create(m, x, y, guild_index, ev, dev)) == 0) { // Creation failed
-		script_pushint(st,0);
-		return true;
+		script_pushint(st, 0);
+		return false;
 	}
 
-	for(i = 0; i < cd->users && i < MAX_BG_MEMBERS; i++) {
+	for (i = 0; i < cd->users && i < MAX_BG_MEMBERS; i++) {
 		if ((sd = cd->usersd[i]) != NULL && hBG_team_join(bg_id, sd))
 			mapreg->setreg(reference_uid(script->add_str("$@arenamembers"), i), sd->bl.id);
 		else
@@ -2595,7 +2784,9 @@ BUILDIN(hBG_waitingroom2bg)
 	}
 
 	mapreg->setreg(script->add_str("$@arenamembersnum"), i);
-	script_pushint(st,bg_id);
+
+	script_pushint(st, bg_id);
+
 	return true;
 }
 
@@ -2618,25 +2809,32 @@ BUILDIN(hBG_waitingroom2bg_single)
 
 	bg_id = script_getnum(st,2);
 	map_name = script_getstr(st,3);
-	if ((m = mapindex->name2id(map_name)) == 0)
-		return true; // Invalid Map
+
+	if ((m = mapindex->name2id(map_name)) == 0) {
+		script_pushint(st, 0);
+		return false; // Invalid Map
+	}
 
 	x = script_getnum(st,4);
 	y = script_getnum(st,5);
 	nd = npc->name2id(script_getstr(st,6));
 
-	if (nd == NULL || (cd = (struct chat_data *)map->id2bl(nd->chat_id)) == NULL || cd->users <= 0)
-		return true;
+	if (nd == NULL || (cd = (struct chat_data *)map->id2bl(nd->chat_id)) == NULL || cd->users <= 0) {
+		script_pushint(st, 0);
+		return false;
+	}
 
-	if ((sd = cd->usersd[0]) == NULL)
-		return true;
+	if ((sd = cd->usersd[0]) == NULL) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	if (hBG_team_join(bg_id, sd)) {
 		pc->setpos(sd, m, x, y, CLR_TELEPORT);
 		script_pushint(st,1);
-	}
-	else
+	} else {
 		script_pushint(st,0);
+	}
 
 	return true;
 }
@@ -2653,11 +2851,17 @@ BUILDIN(hBG_team_setxy)
 	int bg_id;
 
 	bg_id = script_getnum(st,2);
-	if ((bgd = bg->team_search(bg_id)) == NULL)
-		return true;
+
+	if ((bgd = bg->team_search(bg_id)) == NULL) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	bgd->x = script_getnum(st,3);
 	bgd->y = script_getnum(st,4);
+
+	script_pushint(st, 1);
+
 	return true;
 }
 
@@ -2672,10 +2876,16 @@ BUILDIN(hBG_team_reveal)
 	int bg_id;
 
 	bg_id = script_getnum(st,2);
-	if ((bgd = bg->team_search(bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
-		return true;
+
+	if ((bgd = bg->team_search(bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	hBGd->reveal_pos = true; // Reveal Position Mode
+
+	script_pushint(st, 1);
+
 	return true;
 }
 
@@ -2691,16 +2901,22 @@ BUILDIN(hBG_team_conceal)
 	int bg_id,i=0;
 
 	bg_id = script_getnum(st,2);
-	if ((bgd = bg->team_search(bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
-		return true;
 
-	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+	if ((bgd = bg->team_search(bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL) {
+		script_pushint(st, 0);
+		return false;
+	}
+
+	for (i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((sd = bgd->members[i].sd) == NULL)
 			continue;
+
 		hBG_send_dot_remove(sd);
 	}
 
 	hBGd->reveal_pos = false; // Conceal Position Mode
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -2719,15 +2935,27 @@ BUILDIN(hBG_team_setquest)
 	bg_id = script_getnum(st,2);
 	qid = script_getnum(st,3);
 
-	if (bg_id == 0 || (bgd = bg->team_search(bg_id)) == NULL)
-		return true;
+	if (bg_id <= 0 || (bgd = bg->team_search(bg_id)) == NULL) {
+		ShowError("buildin_hBG_team_setquest: Invalid Team ID %d given.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
+	}
 
-	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+	if (qid <= 0 || quest->db(qid) == NULL) {
+		ShowError("buildin_hBG_team_setquest: Invalid Quest ID %d given.\n", qid);
+		script_pushint(st, 0);
+		return false;
+	}
+
+	for (i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((sd = bgd->members[i].sd) == NULL)
 			continue;
 
 		quest->add(sd,qid);
 	}
+
+	script_pushint(st, 1);
+
 	return true;
 }
 
@@ -2770,8 +2998,11 @@ BUILDIN(hBG_viewpointmap)
 	const char *map_name;
 
 	map_name = script_getstr(st,2);
-	if ((m = map->mapname2mapid(map_name)) < 0)
-		return true; // Invalid Map
+
+	if ((m = map->mapname2mapid(map_name)) < 0) {
+		script_pushint(st, 0);
+		return false; // Invalid Map
+	}
 
 	type=script_getnum(st,3);
 	x=script_getnum(st,4);
@@ -2780,6 +3011,8 @@ BUILDIN(hBG_viewpointmap)
 	color=script_getnum(st,7);
 
 	map->foreachinmap(hBG_viewpointmap_sub,m,BL_PC,st->oid,type,x,y,id,color);
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -2800,10 +3033,14 @@ BUILDIN(hBG_monster_reveal)
 	flag = script_getnum(st,3),
 	color = script_getnum(st,4);
 
-	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB)
-		return true;
+	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	map->foreachinmap(hBG_viewpointmap_sub, mbl->m, BL_PC, st->oid, flag, mbl->x, mbl->y, mbl->id, color);
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -2820,8 +3057,10 @@ BUILDIN(hBG_monster_set_team)
 	int id = script_getnum(st,2),
 	bg_id = script_getnum(st,3);
 
-	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB)
-		return true;
+	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	md = (TBL_MOB *)mbl;
 	md->bg_id = bg_id;
@@ -2832,6 +3071,8 @@ BUILDIN(hBG_monster_set_team)
 	md->target_id = md->attacked_id = 0;
 
 	clif->charnameack(0, &md->bl);
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -2851,8 +3092,10 @@ BUILDIN(hBG_monster_immunity)
 	int id = script_getnum(st,2),
 	flag = script_getnum(st,3);
 
-	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB)
-		return true;
+	if (id == 0 || (mbl = map->id2bl(id)) == NULL || mbl->type != BL_MOB) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	md = (TBL_MOB *)mbl;
 
@@ -2871,10 +3114,14 @@ BUILDIN(hBG_leave)
 {
 	struct map_session_data *sd = script->rid2sd(st);
 
-	if (sd == NULL || !sd->bg_id)
-		return true;
+	if (sd == NULL || sd->bg_id == 0) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	hBG_team_leave(sd,0);
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -2885,9 +3132,17 @@ BUILDIN(hBG_leave)
  */
 BUILDIN(hBG_destroy)
 {
-	int bg_id = script_getnum(st,2);
+	int bg_id = script_getnum(st, 2);
+
+	if (bg_id <= 0 || bg->team_search(bg_id) == NULL) {
+		ShowError("buildin_hBG_destroy: Invalid BG Id %d provided.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
+	}
 
 	hBG_team_finalize(bg_id, true);
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -2898,10 +3153,18 @@ BUILDIN(hBG_destroy)
  */
 BUILDIN(hBG_clean)
 {
-	int bg_id = script_getnum(st,2);
-	
+	int bg_id = script_getnum(st, 2);
+
+	if (bg_id <= 0 || bg->team_search(bg_id) == NULL) {
+		ShowError("buildin_hBG_clean: Invalid BG Id %d provided.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
+	}
+
 	hBG_team_finalize(bg_id, false);
-	
+
+	script_pushint(st, 1);
+
 	return true;
 }
 
@@ -2927,7 +3190,7 @@ BUILDIN(hBG_getareausers)
 
 	if ((bgd = bg->team_search(bg_id)) == NULL || (m = map->mapname2mapid(map_name)) < 0) {
 		script_pushint(st,0);
-		return true;
+		return false;
 	}
 
 	x0 = script_getnum(st,4);
@@ -2935,7 +3198,7 @@ BUILDIN(hBG_getareausers)
 	x1 = script_getnum(st,6);
 	y1 = script_getnum(st,7);
 
-	for(i = 0; i < MAX_BG_MEMBERS; i++) {
+	for (i = 0; i < MAX_BG_MEMBERS; i++) {
 		if ((sd = bgd->members[i].sd) == NULL)
 			continue;
 		else if (sd->bl.m != m || sd->bl.x < x0 || sd->bl.y < y0 || sd->bl.x > x1 || sd->bl.y > y1)
@@ -2943,7 +3206,7 @@ BUILDIN(hBG_getareausers)
 		c++;
 	}
 
-	script_pushint(st,c);
+	script_pushint(st, c);
 	
 	return true;
 }
@@ -2960,13 +3223,19 @@ BUILDIN(hBG_updatescore)
 	int m;
 
 	map_name = script_getstr(st,2);
-	if ((m = map->mapname2mapid(map_name)) < 0)
-		return true;
+
+	if ((m = map->mapname2mapid(map_name)) < 0) {
+		script_pushint(st, 0);
+		return false;
+	}
 
 	map->list[m].bgscore_lion = script_getnum(st,3);
 	map->list[m].bgscore_eagle = script_getnum(st,4);
 
 	clif->bg_updatescore(m);
+
+	script_pushint(st, 1);
+
 	return true;
 }
 
@@ -2979,14 +3248,24 @@ BUILDIN(hBG_update_score_team)
 {
 	struct battleground_data *bgd;
 	struct hBG_data *hBGd;
+	int bg_id = script_getnum(st,2);
+	int score = script_getnum(st,3);
 
-	int bg_id = script_getnum(st,2),
-	score = script_getnum(st,3);
-
-	if ((bgd = bg->team_search(bg_id)) != NULL && (hBGd = getFromBGDATA(bgd, 0)) != NULL) {
-		hBGd->team_score = score;
-		hBG_update_score_team(bgd);
+	if (bg_id <= 0) {
+		ShowError("buildin_hBG_update_score_team: Invalid BG Id %d provided.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
 	}
+
+	if ((bgd = bg->team_search(bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL) {
+		script_pushint(st, 0);
+		return false;
+	}
+
+	hBGd->team_score = score;
+	hBG_update_score_team(bgd);
+
+	script_pushint(st, 1);
 
 	return true;
 }
@@ -3000,9 +3279,13 @@ BUILDIN(hBG_get_team_gid)
 {
 	struct battleground_data *bgd;
 	struct hBG_data *hBGd;
-	int bg_id = script_getnum(st,2),
+	int bg_id = script_getnum(st,2), guild_id = 0;
 
-	guild_id = 0;
+	if (bg_id <= 0) {
+		ShowError("buildin_hBG_get_team_gid: Invalid BG Id %d provided.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
+	}
 
 	if ((bgd = bg->team_search(bg_id)) != NULL
 		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL)
@@ -3027,15 +3310,18 @@ BUILDIN(hBG_get_data)
 {
 	struct battleground_data *bgd;
 	struct hBG_data *hBGd;
+	int bg_id = script_getnum(st,2);
+	int type = script_getnum(st,3);
 
-	int bg_id = script_getnum(st,2),
+	if (bg_id <= 0) {
+		ShowError("buildin_hBG_get_data: Invalid BG Id %d provided.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
+	}
 
-	type = script_getnum(st,3);
-
-	if ((bgd = bg->team_search(bg_id)) == NULL
-		|| (hBGd = getFromBGDATA(bgd, 0)) == NULL) {
-		script_pushint(st,0);
-		return true;
+	if ((bgd = bg->team_search(bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL) {
+		script_pushint(st, 0);
+		return false;
 	}
 
 	switch (type)
@@ -3047,7 +3333,7 @@ BUILDIN(hBG_get_data)
 		{
 			int i, j = 0;
 			struct map_session_data *sd;
-			for(i = 0; i < bgd->count; i++) {
+			for (i = 0; i < bgd->count; i++) {
 				if ((sd = bgd->members[i].sd) == NULL)
 					continue;
 				mapreg->setregstr(reference_uid(script->add_str("$@bgmembers$"),j),sd->status.name);
@@ -3071,6 +3357,8 @@ BUILDIN(hBG_get_data)
 			break;
 	}
 
+	script_pushint(st, 0);
+
 	return true;
 }
 
@@ -3088,7 +3376,24 @@ BUILDIN(hBG_getitem)
 	nameid = script_getnum(st,3);
 	amount = script_getnum(st,4);
 
+
+	if (bg_id <= 0 || bg->team_search(bg_id) == NULL) {
+		ShowError("buildin_hBG_getitem: Invalid BG Id %d provided.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
+	} else if (nameid <= 0 || itemdb->exists(nameid) == NULL) {
+		ShowError("buildin_hBG_getitem: Invalid Item Id %d provided.\n", nameid);
+		script_pushint(st, 0);
+		return false;
+	} else if (amount <= 0) {
+		ShowError("buildin_hBG_getitem: Invalid Item amount %d provided.\n", amount);
+		script_pushint(st, 0);
+		return false;
+	}
+
 	hBG_team_getitem(bg_id, nameid, amount);
+
+	script_pushint(st, amount);
 
 	return true;
 }
@@ -3102,10 +3407,23 @@ BUILDIN(hBG_getkafrapoints)
 {
 	int bg_id, amount;
 
-	bg_id = script_getnum(st,2);
-	amount = script_getnum(st,3);
+	bg_id = script_getnum(st, 2);
+	amount = script_getnum(st, 3);
+
+	if (bg_id <= 0 || bg->team_search(bg_id) == NULL) {
+		ShowError("buildin_hBG_getkafrapoints: Invalid BG Id %d provided.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
+	} else if (amount <= 0) {
+		ShowError("buildin_hBG_getkafrapoints: Invalid Kafra Points %d provided.\n", amount);
+		script_pushint(st, 0);
+		return false;
+	}
 
 	hBG_team_get_kafrapoints(bg_id, amount);
+
+	script_pushint(st, amount);
+
 	return true;
 }
 
@@ -3136,7 +3454,52 @@ BUILDIN(hBG_reward)
 	bg_arena = script_getnum(st,9);
 	bg_result = script_getnum(st,10);
 
+	if (bg_id <= 0 || bg->team_search(bg_id) == NULL) {
+		ShowError("buildin_hBG_reward: Invalid BG Id %d provided.\n", bg_id);
+		script_pushint(st, 0);
+		return false;
+	}
+
+	if (nameid <= 0 || itemdb->exists(nameid) == NULL) {
+		ShowError("buildin_hBG_reward: Invalid Item Id %d provided.\n", nameid);
+		script_pushint(st, 0);
+		return false;
+	}
+
+	if (nameid > 0 && amount <= 0) {
+		ShowError("buildin_hBG_reward: Invalid Item amount %d provided.\n", nameid);
+		script_pushint(st, 0);
+		return false;
+	}
+
+	if (kafrapoints < 0) {
+		ShowError("buildin_hBG_reward: Invalid Kafra Points %d provided.\n", kafrapoints);
+		script_pushint(st, 0);
+		return false;
+	}
+
+	if (quest_id < 0 || quest->db(quest_id) == NULL) {
+		ShowError("buildin_hBG_reward: Invalid Quest ID %d provided.\n", quest_id);
+		script_pushint(st, 0);
+		return false;
+	}
+
+	if (bg_arena < 0) {
+		ShowError("buildin_hBG_reward: Invalid BG Arena %d provided. \n", bg_arena);
+		script_pushint(st, 0);
+		return false;
+	}
+
+	if (bg_result < 0 || bg_result > 2) {
+		ShowError("buildin_hBG_reward: Invalid BG result type %d provided. (types - 0 Won | 1 Tie | 2 Lost)", bg_result);
+		script_pushint(st, 0);
+		return false;
+	}
+
 	hBG_team_rewards(bg_id, nameid, amount, kafrapoints, quest_id, var, add_value, bg_arena, bg_result);
+
+	script_pushint(st, 1);
+
 	return true;
 }
 
@@ -3150,29 +3513,39 @@ BUILDIN(hBG_reward)
  */
 BUILDIN(hBG_flooritem2xy)
 {
-	struct item_data *item_data;
 	int nameid, amount, m, x, y;
 	const char *mapname;
 	
 	mapname = script_getstr(st,2);
 	
-	if ((m = map->mapname2mapid(mapname)) < 0)
-		return true;
+	if ((m = map->mapname2mapid(mapname)) < 0) {
+		// error message is thrown through mapindex->name2id()
+		script_pushint(st, 0);
+		return false;
+	}
 	
 	x = script_getnum(st,3);
 	y = script_getnum(st,4);
 	nameid = script_getnum(st,5);
 	
-	if ((item_data = itemdb->search(nameid)) == NULL)
-		return true;
+	if (itemdb->search(nameid) == NULL) {
+		ShowError("buildin_hBG_flooritem2xy: Invalid Item Id %d provided.\n", nameid);
+		script_pushint(st, 0);
+		return false;
+	}
 	
 	amount = script_getnum(st,6);
 	
-	if (amount < 1)
-		return true;
+	if (amount < 1) {
+		ShowError("buildin_hBG_flooritem2xy: Invalid Item amount %d provided.\n", amount);
+		script_pushint(st, 0);
+		return false;
+	}
 	
 	hBG_addflooritem_area(NULL, m, x, y, nameid, amount);
-	
+
+	script_pushint(st, amount);
+
 	return true;
 }
 
@@ -3265,17 +3638,27 @@ int skillnotok_pre(uint16 *skill_id, struct map_session_data **sd)
 int skill_castend_nodamage_id_pre(struct block_list **src, struct block_list **bl, uint16 *skill_id, uint16 *skill_lv, int64 *tick, int *flag)
 {
 	struct map_session_data *sd, *dstsd;
+	struct status_change *tsc;
+	struct status_data *sstatus;
+	struct hBG_map_session_data *hBGsd = NULL;
 	
 	nullpo_retr(1, bl);
 	nullpo_retr(1, src);
-	
-	sd = BL_CAST(BL_PC, *src);
-	dstsd = BL_CAST(BL_PC, *bl);
-	
+
 	if (!map->list[(*src)->m].flag.battleground || *skill_id != GD_EMERGENCYCALL)
 		return 0;
 	
-	switch(*skill_id) {
+	sd = BL_CAST(BL_PC, *src);
+	dstsd = BL_CAST(BL_PC, *bl);
+
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL)
+		return 0;
+
+	tsc = status->get_sc(*bl);
+
+	sstatus = status->get_status_data(*src);
+	
+	switch (*skill_id) {
 		case GD_EMERGENCYCALL:
 		{
 			int dx[9]={-1, 1, 0, 0,-1, 1,-1, 1, 0};
@@ -3287,7 +3670,7 @@ int skill_castend_nodamage_id_pre(struct block_list **src, struct block_list **b
 			if (sd && (g = hBG_get_guild(sd->bg_id)) != NULL) {
 				clif->skill_nodamage(*src, *bl, *skill_id, *skill_lv, 1);
 				
-				for(i = 0; i < g->max_member; i++, j++) {
+				for (i = 0; i < g->max_member; i++, j++) {
 					if (j>8) j=0;
 					if ((dstsd = g->member[i].sd) != NULL && sd != dstsd && !dstsd->state.autotrade && !pc_isdead(dstsd)) {
 						if (map->getcell((*src)->m, *src, (*src)->x + dx[j], (*src)->y + dy[j], CELL_CHKNOREACH))
@@ -3296,6 +3679,48 @@ int skill_castend_nodamage_id_pre(struct block_list **src, struct block_list **b
 					}
 				}
 				guild->block_skill(sd, skill->get_time2(*skill_id, *skill_lv));
+			}
+		}
+			break;
+		case HLIF_HEAL:
+		case AL_HEAL:
+		{
+			struct mob_data *dstmd = BL_UCAST(BL_MOB, *bl);
+			int heal = skill->calc_heal(*src, *bl, *skill_id, *skill_lv, true);
+
+			if (status->isimmune(*bl) || (dstmd && dstmd->class_ == MOBID_EMPELIUM))
+				heal = 0;
+
+			if (dstmd && mob_is_battleground(dstmd))
+				heal = 1;
+
+			if (sd && dstsd && sd->status.partner_id == dstsd->status.char_id && (sd->job&MAPID_UPPERMASK) == MAPID_SUPER_NOVICE && sd->status.sex == 0)
+				heal = heal*2;
+
+			if (tsc && tsc->count)
+			{
+				if (tsc->data[SC_KAITE] && !(sstatus->mode&MD_BOSS))
+				{ //Bounce back heal
+					if (src == bl)
+						heal=0; //When you try to heal yourself under Kaite, the heal is voided.
+					else {
+						bl = src;
+						dstsd = sd;
+					}
+				} else if (tsc->data[SC_BERSERK]) {
+						heal = 0; //Needed so that it actually displays 0 when healing.
+				}
+			}
+
+			if (sd && dstsd && heal > 0 && sd != dstsd)
+			{
+				if (map->list[(*src)->m].flag.battleground && sd->bg_id && dstsd->bg_id)
+				{
+					if (sd->bg_id == dstsd->bg_id)
+						add2limit(hBGsd->stats.healing_done, heal, UINT_MAX);
+					else
+						add2limit(hBGsd->stats.wrong_healing_done, heal, UINT_MAX);
+				}
 			}
 		}
 			break;
@@ -3367,32 +3792,6 @@ int bg_team_leave_pre(struct map_session_data **sd, enum bg_team_leave_type *fla
 }
 
 /**
- * Map Pre-Hooks
- */
-// Cleanup on player Logout
-int map_quit_pre(struct map_session_data **sd)
-{
-	struct hBG_queue_data *hBGqd;
-	struct battleground_data *bgd = NULL;
-	struct hBG_data *hBGd = NULL;
-	
-	nullpo_ret((*sd));
-	
-	// Only if player is logging out.
-	if (sockt->session[(*sd)->fd]->flag.eof && (hBGqd = getFromMSD((*sd), 0))) {
-		if (hBG_queue_member_search(hBGqd, (*sd)->bl.id)) {
-			hBG_queue_member_remove(hBGqd, (*sd)->bl.id);
-		} else if ((*sd)->bg_id
-		   && (bgd = bg->team_search((*sd)->bg_id)) != NULL
-		   && (hBGd = getFromBGDATA(bgd, 0)) != NULL) {
-		   hBG_team_leave(*sd, 0);
-	   }
-	}
-	
-	return 0;
-}
-
-/**
  * Guild Pre-Hooks
  */
 // Check if guild is null and don't run BCT checks if true.
@@ -3408,11 +3807,59 @@ bool guild_isallied_pre(int *guild_id, int *guild_id2)
 	return false;
 }
 
+/**
+ * Unit Pre-Hooks
+ */
+int unit_free_pre(struct block_list **bl, clr_type *clrtype)
+{
+	nullpo_retr(0, (*bl));
+
+	if ((*bl)->type == BL_PC) {
+		struct map_session_data *sd = BL_UCAST(BL_PC, (*bl));
+		struct hBG_queue_data *hBGqd = NULL;
+		struct battleground_data *bgd = NULL;
+		struct hBG_data *hBGd = NULL;
+		struct hBG_map_session_data *hBGsd = NULL;
+
+		if ((hBGqd = getFromMSD(sd, 0)) && hBG_queue_member_search(hBGqd, sd->bl.id))
+			hBG_queue_member_remove(hBGqd, sd->bl.id);
+
+		if (sd->bg_id != 0
+			&& (bgd = bg->team_search(sd->bg_id)) != NULL
+			&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
+			&& (hBGsd = getFromMSD(sd, 1)) != NULL) {
+			hBG_team_leave(sd, 0);
+			hBGsd->stats.total_deserted++;
+		}
+	}
+
+	return 0;
+}
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *                     Map Server Function Post-Hooks
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/**
+ * Battle Post-Hooks
+ */
+void battle_consume_ammo(struct map_session_data *sd, int skill_id, int lv)
+{
+	int qty = 1;
+	struct hBG_map_session_data *hBGsd = getFromMSD(sd, 1);
+
+	if (battle->bc->arrow_decrement == 0 || hBGsd == NULL)
+		return;
+
+	if (skill)
+		qty = max(1, skill->get_ammo_qty(skill_id, lv));
+
+	if (sd->equip_index[EQI_AMMO] >= 0) {
+		if (sd->bg_id && map->list[sd->bl.m].flag.battleground)
+			add2limit(hBGsd->stats.ammo_used, qty, UINT_MAX);
+	}
+}
 
 /**
  * Clif Post-Hooks
@@ -3425,7 +3872,8 @@ void clif_parse_LoadEndAck_post(int fd, struct map_session_data *sd)
 
 void clif_parse_UseSkillToId_post(int fd, struct map_session_data *sd)
 {
-	uint16 skill_id, skill_lv;
+	uint16 skill_id;
+	/* uint16 skill_lv; */
 	int target_id;
 	const struct s_packet_db *packet = clif->packet(RFIFOW(fd,0));
 	struct battleground_data *bgd;
@@ -3435,12 +3883,12 @@ void clif_parse_UseSkillToId_post(int fd, struct map_session_data *sd)
 		return;
 	else if ((bgd = bg->team_search(sd->bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
 		return;
-	
-	skill_lv = RFIFOW(fd,packet->pos[0]);
+
+	/* skill_lv = RFIFOW(fd,packet->pos[0]); */
 	skill_id = RFIFOW(fd,packet->pos[1]);
 	target_id = RFIFOL(fd,packet->pos[2]);
 	
-	if (skill_id >= GD_SKILLBASE && skill_id < GD_MAX && hBGd->leader_char_id == sd->status.char_id )
+	if (skill_id >= GD_SKILLBASE && skill_id < GD_MAX && hBGd->leader_char_id == sd->status.char_id)
 			unit->skilluse_id(&sd->bl, target_id, skill_id, guild->checkskill(hBG_get_guild(sd->bg_id), skill_id));
 }
 
@@ -3473,14 +3921,331 @@ void pc_update_idle_time_post(struct map_session_data* sd, enum e_battle_config_
 	}
 }
 
+bool pc_authok_post(bool ret, struct map_session_data *sd, int login_id2, time_t expiration_time, int group_id, const struct mmo_charstatus *st, bool changing_mapservers)
+{
+	if (sd) {
+		WFIFOHEAD(chrif->fd, 14);
+		WFIFOW(chrif->fd, 0) = PACKET_INTER_BG_STATS_REQ;
+		WFIFOL(chrif->fd, 2) = sd->status.account_id;
+		WFIFOL(chrif->fd, 6) = sd->status.char_id;
+		WFIFOL(chrif->fd, 10) = sd->fd;
+		WFIFOSET(chrif->fd, 14);
+	}
+	
+	return ret;
+}
+
+/**
+ * Character Interface Post-Hooks
+ */
+/**
+ * Requests saving of hBG Statistics and sends data to char-server.
+ *
+ * @param sd pointer to map session data.
+ * @param flag as an indicator to tell char-server if character is quitting.
+ * @return boolean.
+ */
+bool chrif_save_post(bool ret, struct map_session_data *sd, int flag)
+{
+	struct hBG_map_session_data *hBGsd = NULL;
+	int len = 13 + sizeof(struct hBG_stats);
+	
+	nullpo_retr(false, sd);
+	
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL)
+		return ret;
+	
+	WFIFOHEAD(chrif->fd, len);
+	WFIFOW(chrif->fd, 0) = PACKET_INTER_BG_STATS_SAVE; // 0x9000 Packet ID
+	WFIFOL(chrif->fd, 2) = sd->status.account_id; // Account Id
+	WFIFOL(chrif->fd, 6) = sd->status.char_id; // Char Id
+	WFIFOB(chrif->fd, 12) = (flag==1); //Flag to tell char-server this character is quitting.
+	memcpy(WFIFOP(chrif->fd, 13), &hBGsd->stats, sizeof(struct hBG_stats)); // hBG statistics.
+	WFIFOSET(chrif->fd, len);
+	
+	return ret;
+}
+
+/**
+ * Status Post Hooks
+ */
+int status_damage_post(int ret, struct block_list *src,struct block_list *target,int64 in_hp, int64 in_sp, int walkdelay, int flag)
+{
+	struct map_session_data *sd = NULL;
+	struct hBG_map_session_data *hBGsd = NULL;
+
+	nullpo_retr(ret, src);
+	nullpo_retr(ret, target);
+
+	if (src->type != BL_PC || (sd = BL_UCAST(BL_PC, src)) == NULL)
+		return ret;
+	if (map->list[src->m].flag.battleground == 0)
+		return ret;
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL)
+		return ret;
+
+	hBG_record_damage(src, target, (int) in_hp);
+
+	return ret;
+}
+
+/**
+ * Receives and allocates map session data with bg statistics
+ * from char-server.
+ *
+ * @param fd as socket descriptor handle
+ */
+void hBG_statistics_parsefromchar(int fd)
+{
+	struct map_session_data *sd = NULL;
+	struct hBG_map_session_data *hBGsd = NULL;
+	struct hBG_stats *stats = NULL;
+	/* int account_id = RFIFOL(fd, 2), char_id = RFIFOL(fd, 6); */
+ 	int char_fd = RFIFOL(fd,10);
+	
+	nullpo_retv(sockt->session[char_fd]);
+	
+	sd = sockt->session[char_fd]->session_data;
+
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL) {
+		CREATE(hBGsd, struct hBG_map_session_data, 1);
+		addToMSD(sd, hBGsd, 1, false);
+	}
+	
+	if ((stats = getFromSession(sockt->session[fd], 0)) == NULL)
+		memcpy(&hBGsd->stats, RFIFOP(fd, 14), sizeof(struct hBG_stats));
+	else
+		memcpy(&hBGsd->stats, stats, sizeof(struct hBG_stats));
+}
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *                     Battle Configuration Parsing
+ *                     Char Server Functions
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/**
+ * Character Server Saving of hBG Statistics
+ *
+ * @param fd socket descriptor handle
+ */
+void char_bgstats_tosql(int fd)
+{
+	struct hBG_stats pstats = {0}, *stats = NULL;
+	int account_id = 0, char_id = 0;
+	/* int flag = 0; */
+	
+	nullpo_retv(sockt->session[fd]);
+	
+	account_id = RFIFOL(fd, 2);
+	char_id = RFIFOL(fd, 6);
+	/* flag = RFIFOB(fd, 12); */
+	
+	if ((stats = getFromSession(sockt->session[fd], 0)) == NULL) {
+		CREATE(stats, struct hBG_stats, 1);
+		memset(stats, 0, sizeof(struct hBG_stats));
+		addToSession(sockt->session[fd], stats, 0, true);
+	}
+	
+	memcpy(&pstats, RFIFOP(fd, 13), sizeof(struct hBG_stats));
+	
+	if (memcmp(stats, &pstats, sizeof(struct hBG_stats))) {
+		if (SQL_ERROR == SQL->Query(inter->sql_handle,
+			"REPLACE INTO `char_bg_stats` ("
+			"`char_id`, "
+			"`best_damage`, `total_damage_done`, `total_damage_received`, "
+			"`ti_wins`, `ti_lost`, `ti_tie`, "
+			"`eos_flags`, `eos_bases`, `eos_wins`, `eos_lost`, `eos_tie`, "
+			"`boss_killed`, `boss_damage`, `boss_flags`, `boss_wins`, `boss_lost`, `boss_tie`, "
+			"`dom_bases`, `dom_off_kills`, `dom_def_kills`, `dom_wins`, `dom_lost`, `dom_tie`, "
+			"`td_kills`, `td_deaths`, `td_wins`, `td_lost`, `td_tie`, "
+			"`sc_stolen`, `sc_captured`, `sc_dropped`, `sc_wins`, `sc_lost`, `sc_tie`, "
+			"`ctf_taken`, `ctf_captured`, `ctf_dropped`, `ctf_wins`, `ctf_lost`, `ctf_tie`, "
+			"`emperium_kills`, `barricade_kills`, `guardian_stone_kills`, `conquest_wins`, `conquest_losses`, "
+			"`ru_captures`, `ru_wins`, `ru_lost`, `ru_skulls`,"
+			"`kill_count`, `death_count`, `wins`, `losses`, `ties`, `wins_as_leader`, `losses_as_leader`, `ties_as_leader`, `total_deserted`, `score`, `points`, `ranked_points`, `ranked_games`,"
+			"`sp_heal_potions`, `hp_heal_potions`, `yellow_gemstones`, `red_gemstones`, `blue_gemstones`, `poison_bottles`, `acid_demostration`, `acid_demostration_fail`, "
+			"`support_skills_used`, `healing_done`, `wrong_support_skills_used`, `wrong_healing_done`, "
+			"`sp_used`, `zeny_used`, `spiritb_used`, `ammo_used`)"
+			" VALUES "
+			"('%d',"
+			"'%u','%u','%u',"
+			"'%d','%d','%d','%d',"
+			"'%d','%d','%d','%d','%d',"
+			"'%ud','%u','%d','%d','%d','%d',"
+			"'%d','%d','%d','%d','%d','%d',"
+			"'%d','%d','%d','%d','%d',"
+			"'%d','%d','%d','%d','%d','%d',"
+			"'%d','%d','%d','%d','%d','%d',"
+			"'%d','%d','%d','%d','%d',"
+			"'%d','%d','%d',"
+			"'%d','%d','%d','%d','%d','%d','%d','%d','%d','%d','%d','%d','%d',"
+			"'%ud','%ud','%ud','%ud','%ud','%ud','%ud','%ud',"
+			"'%ud','%ud','%ud','%ud',"
+			"'%ud','%ud','%ud','%ud')",
+			char_id,
+			pstats.best_damage, pstats.total_damage_done, pstats.total_damage_received,
+			pstats.ti_wins,pstats.ti_lost,pstats.ti_tie,
+			pstats.eos_flags,pstats.eos_bases,pstats.eos_wins,pstats.eos_lost,pstats.eos_tie,
+			pstats.boss_killed,pstats.boss_damage,pstats.boss_flags,pstats.boss_wins,pstats.boss_lost,pstats.boss_tie,
+			pstats.dom_bases,pstats.dom_off_kills,pstats.dom_def_kills,pstats.dom_wins,pstats.dom_lost,pstats.dom_tie,
+			pstats.td_kills,pstats.td_deaths,pstats.td_wins,pstats.td_lost,pstats.td_tie,
+			pstats.sc_stolen,pstats.sc_captured,pstats.sc_dropped,pstats.sc_wins,pstats.sc_lost,pstats.sc_tie,
+			pstats.ctf_taken,pstats.ctf_captured,pstats.ctf_dropped,pstats.ctf_wins,pstats.ctf_lost,pstats.ctf_tie,
+			pstats.emperium_kills,pstats.barricade_kills,pstats.guardian_stone_kills,pstats.conquest_wins,pstats.conquest_losses,
+			pstats.ru_captures,pstats.ru_wins,pstats.ru_lost, pstats.ru_skulls,
+			pstats.kill_count,pstats.death_count,pstats.wins,pstats.losses,pstats.ties,pstats.wins_as_leader,pstats.losses_as_leader,
+			pstats.ties_as_leader,pstats.total_deserted,pstats.score,pstats.points,pstats.ranked_points,pstats.ranked_games,
+			pstats.sp_heal_potions, pstats.hp_heal_potions, pstats.yellow_gemstones, pstats.red_gemstones,
+			pstats.blue_gemstones, pstats.poison_bottles, pstats.acid_demostration, pstats.acid_demostration_fail,
+			pstats.support_skills_used, pstats.healing_done, pstats.wrong_support_skills_used, pstats.wrong_healing_done,
+			pstats.sp_used, pstats.zeny_used, pstats.spiritb_used, pstats.ammo_used))
+		{
+			Sql_ShowDebug(inter->sql_handle);
+		} else {
+			memcpy(stats, &pstats, sizeof(struct hBG_stats));
+			ShowInfo("Saved char (AID/CID: %d/%d) - BG Statistics [by Smokexyz].\n", account_id, char_id);
+		}
+	}
+}
+
+void char_bgstats_fromsql(int fd)
+{
+	struct hBG_stats temp_stats = { 0 }, *stats = NULL;
+	int account_id = 0, char_id = 0, char_fd = 0, len = 0;
+	struct SqlStmt *stmt = SQL->StmtMalloc(inter->sql_handle);
+
+	if (stmt == NULL) {
+		SqlStmt_ShowDebug(stmt);
+		return;
+	}
+	
+	account_id = RFIFOL(fd,2);
+	char_id = RFIFOL(fd, 6);
+	char_fd = RFIFOL(fd, 10);
+	
+	if (SQL_ERROR == SQL->StmtPrepare(stmt, "SELECT "
+		"`best_damage`,`total_damage_done`,`total_damage_received`,`ru_skulls`,`ti_wins`,`ti_lost`,`ti_tie`,`eos_flags`,`eos_bases`,`eos_wins`," // 0-9
+		"`eos_lost`,`eos_tie`,`boss_killed`,`boss_damage`,`boss_flags`,`boss_wins`,`boss_lost`,`boss_tie`,`td_kills`,`td_deaths`," //10-19
+		"`td_wins`,`td_lost`,`td_tie`,`sc_stolen`,`sc_captured`,`sc_dropped`,`sc_wins`,`sc_lost`,`sc_tie`,`ctf_taken`," //20-29
+		"`ctf_captured`,`ctf_dropped`,`ctf_wins`,`ctf_lost`,`ctf_tie`,`emperium_kills`,`barricade_kills`,`guardian_stone_kills`,`conquest_wins`,`conquest_losses`,"//30-39
+		"`kill_count`,`death_count`,`wins`,`losses`,`ties`,`wins_as_leader`,`losses_as_leader`,`ties_as_leader`,`total_deserted`,`score`,"//40-49
+		"`points`,`sp_heal_potions`,`hp_heal_potions`,`yellow_gemstones`,`red_gemstones`,`blue_gemstones`,`poison_bottles`,`acid_demostration`,`acid_demostration_fail`,`support_skills_used`,"//50-59
+		"`healing_done`,`wrong_support_skills_used`,`wrong_healing_done`,`sp_used`,`zeny_used`,`spiritb_used`,`ammo_used`,`ranked_points`,`ranked_games`,`ru_wins`,"//60-69
+		"`ru_lost`,`ru_captures`,`dom_bases`,`dom_off_kills`,`dom_def_kills`,`dom_wins`,`dom_lost`,`dom_tie`"//70-79
+		" FROM `char_bg_stats` WHERE `char_id` = ?")
+		|| SQL_ERROR == SQL->StmtBindParam(stmt, 0, SQLDT_INT, &char_id, 0)
+		|| SQL_ERROR == SQL->StmtExecute(stmt)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  0, SQLDT_UINT,   &temp_stats.best_damage, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  1, SQLDT_UINT,   &temp_stats.total_damage_done, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  2, SQLDT_UINT,   &temp_stats.total_damage_received, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  3, SQLDT_USHORT, &temp_stats.ru_skulls, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  4, SQLDT_USHORT, &temp_stats.ti_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  5, SQLDT_USHORT, &temp_stats.ti_lost, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  6, SQLDT_USHORT, &temp_stats.ti_tie, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  7, SQLDT_USHORT, &temp_stats.eos_flags, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  8, SQLDT_USHORT, &temp_stats.eos_bases, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  9, SQLDT_USHORT, &temp_stats.eos_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 10, SQLDT_USHORT, &temp_stats.eos_lost, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 11, SQLDT_USHORT, &temp_stats.eos_tie, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 12, SQLDT_USHORT, &temp_stats.boss_killed, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 13, SQLDT_UINT,   &temp_stats.boss_damage, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 14, SQLDT_USHORT, &temp_stats.boss_flags, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 15, SQLDT_USHORT, &temp_stats.boss_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 16, SQLDT_USHORT, &temp_stats.boss_lost, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 17, SQLDT_USHORT, &temp_stats.boss_tie, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 18, SQLDT_USHORT, &temp_stats.td_kills, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 19, SQLDT_USHORT, &temp_stats.td_deaths, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 20, SQLDT_USHORT, &temp_stats.td_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 21, SQLDT_USHORT, &temp_stats.td_lost, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 22, SQLDT_USHORT, &temp_stats.td_tie, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 23, SQLDT_USHORT, &temp_stats.sc_stolen, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 24, SQLDT_USHORT, &temp_stats.sc_captured, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 25, SQLDT_USHORT, &temp_stats.sc_dropped, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 26, SQLDT_USHORT, &temp_stats.sc_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 27, SQLDT_USHORT, &temp_stats.sc_lost, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 28, SQLDT_USHORT, &temp_stats.sc_tie, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 29, SQLDT_USHORT, &temp_stats.ctf_taken, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 30, SQLDT_USHORT, &temp_stats.ctf_captured, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 31, SQLDT_USHORT, &temp_stats.ctf_dropped, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 32, SQLDT_USHORT, &temp_stats.ctf_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 33, SQLDT_USHORT, &temp_stats.ctf_lost, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 34, SQLDT_USHORT, &temp_stats.ctf_tie, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 35, SQLDT_USHORT, &temp_stats.emperium_kills, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 36, SQLDT_USHORT, &temp_stats.barricade_kills, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 37, SQLDT_USHORT, &temp_stats.guardian_stone_kills, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 38, SQLDT_USHORT, &temp_stats.conquest_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 39, SQLDT_USHORT, &temp_stats.conquest_losses, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 40, SQLDT_USHORT, &temp_stats.kill_count, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 41, SQLDT_USHORT, &temp_stats.death_count, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 42, SQLDT_USHORT, &temp_stats.wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 43, SQLDT_USHORT, &temp_stats.losses, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 44, SQLDT_USHORT, &temp_stats.ties, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 45, SQLDT_USHORT, &temp_stats.wins_as_leader, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 46, SQLDT_USHORT, &temp_stats.losses_as_leader, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 47, SQLDT_USHORT, &temp_stats.ties_as_leader, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 48, SQLDT_USHORT, &temp_stats.total_deserted, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 49, SQLDT_USHORT, &temp_stats.score, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 50, SQLDT_USHORT, &temp_stats.points, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 51, SQLDT_UINT,   &temp_stats.sp_heal_potions, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 52, SQLDT_UINT,   &temp_stats.hp_heal_potions, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 53, SQLDT_UINT,   &temp_stats.yellow_gemstones, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 54, SQLDT_UINT,   &temp_stats.red_gemstones, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 55, SQLDT_UINT,   &temp_stats.blue_gemstones, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 56, SQLDT_UINT,   &temp_stats.poison_bottles, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 57, SQLDT_UINT,   &temp_stats.acid_demostration, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 58, SQLDT_UINT,   &temp_stats.acid_demostration_fail, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 59, SQLDT_UINT,   &temp_stats.support_skills_used, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 60, SQLDT_UINT,   &temp_stats.healing_done, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 61, SQLDT_UINT,   &temp_stats.wrong_support_skills_used, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 62, SQLDT_UINT,   &temp_stats.wrong_healing_done, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 63, SQLDT_UINT,   &temp_stats.sp_used, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 64, SQLDT_UINT,   &temp_stats.zeny_used, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 65, SQLDT_UINT,   &temp_stats.spiritb_used, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 66, SQLDT_UINT,   &temp_stats.ammo_used, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 67, SQLDT_USHORT, &temp_stats.ranked_points, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 68, SQLDT_USHORT, &temp_stats.ranked_games, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 69, SQLDT_USHORT, &temp_stats.ru_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 70, SQLDT_USHORT, &temp_stats.ru_lost, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 71, SQLDT_USHORT, &temp_stats.ru_captures, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 72, SQLDT_USHORT, &temp_stats.dom_bases, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 73, SQLDT_USHORT, &temp_stats.dom_off_kills, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 74, SQLDT_USHORT, &temp_stats.dom_def_kills, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 75, SQLDT_USHORT, &temp_stats.dom_wins, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 76, SQLDT_USHORT, &temp_stats.dom_lost, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 77, SQLDT_USHORT, &temp_stats.dom_tie, 0, NULL, NULL)
+		|| SQL_SUCCESS != SQL->StmtNextRow(stmt))
+	{
+		temp_stats.score = 2000;
+	}
+	
+	ShowInfo("Loaded char (AID/CID: %d/%d) - BG Statistics [by Smokexyz]\n", account_id, char_id);
+	
+	if ((stats = getFromSession(sockt->session[fd], 0)) == NULL) {
+		CREATE(stats, struct hBG_stats, 1);
+		memcpy(stats, &temp_stats, sizeof(sizeof(struct hBG_stats)));
+		addToSession(sockt->session[fd], stats, 0, true);
+	} else if (memcmp(stats, &temp_stats, sizeof(struct hBG_stats))) {
+		memcpy(stats, &temp_stats, sizeof(struct hBG_stats));
+	}
+	
+	len = 14 + sizeof(struct hBG_stats);
+	WFIFOHEAD(fd, len);
+	WFIFOW(fd, 0) = PACKET_MAP_BG_STATS_GET;
+	WFIFOL(fd, 2) = account_id;
+	WFIFOL(fd, 6) = char_id;
+	WFIFOL(fd, 10) = char_fd;
+	memcpy(WFIFOP(fd, 14), &temp_stats, sizeof(struct hBG_stats));
+	WFIFOSET(fd, len);
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                     Battle Configuration Parsing                    *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 void hBG_config_read(const char *key, const char *val)
 {
-	int value = config_switch(val);
+	int value = config_switch (val);
 
 	if (strcmpi(key,"battle_configuration/hBG_enabled") == 0) {
 		if (value < 0 || value > 1) {
@@ -3495,7 +4260,7 @@ void hBG_config_read(const char *key, const char *val)
 		}
 		hBG_from_town_only = value;
 	} else if (strcmpi(key, "battle_configuration/hBG_ip_check") == 0) {
-		if (value < 0 || value > 1) {
+		if (value < 0) {
 			ShowWarning("Received Invalid Setting %d for hBG_ip_check, defaulting to 0.\n", value);
 			return;
 		}
@@ -3535,8 +4300,8 @@ void hBG_config_read(const char *key, const char *val)
 			hBG_reward_rates = value;
 		}
 	} else if (strcmpi(key, "battle_configuration/hBG_xy_interval") == 0) {
-		if (value < 0) {
-			ShowWarning("Received Invalid Setting %d for hBG_xy_interval, defaulting to 1000ms. \n", value);
+		if (value < 1000) {
+			ShowWarning("Received Invalid Setting %d for hBG_xy_interval. (min: %d, max: %d) Defaulting to 1000ms. \n", value, 1000, INT_MAX);
 			hBG_xy_interval = 1000;
 		} else {
 			hBG_xy_interval = value;
@@ -3586,26 +4351,35 @@ int hBG_config_get(const char *key)
 HPExport void plugin_init(void)
 {
 	int interval = hBG_config_get("battle_configuration/hBG_xy_interval");
+
+	if (SERVER_TYPE == SERVER_TYPE_CHAR) {
+		addPacket(PACKET_INTER_BG_STATS_REQ, 14, char_bgstats_fromsql, hpParse_FromMap);
+		addPacket(PACKET_INTER_BG_STATS_SAVE, 13 + sizeof(struct hBG_stats), char_bgstats_tosql, hpParse_FromMap);
+	}
 	
 	if (SERVER_TYPE == SERVER_TYPE_MAP) {
+		addPacket(PACKET_MAP_BG_STATS_GET, 14+sizeof(struct hBG_stats), hBG_statistics_parsefromchar, hpChrif_Parse);
 		
 		/* Function Pre-Hooks */
 		addHookPre(npc, parse_unknown_mapflag, npc_parse_unknown_mapflag_pre);
 		addHookPre(clif, charnameupdate, clif_charnameupdate_pre);
 		addHookPre(status, get_guild_id, status_get_guild_id_pre);
 		addHookPre(status, get_emblem_id, status_get_emblem_id_pre);
-		addHookPre(map, quit, map_quit_pre);
 		addHookPre(guild, isallied, guild_isallied_pre);
 		addHookPre(skill, check_condition_castbegin, skill_check_condition_castbegin_pre);
 		addHookPre(skill, not_ok, skillnotok_pre);
 		addHookPre(skill, castend_nodamage_id, skill_castend_nodamage_id_pre);
 		addHookPre(bg, team_leave, bg_team_leave_pre);
+		addHookPre(unit, free, unit_free_pre);
 		
 		/* Function Post-Hooks */
 		addHookPost(clif, pLoadEndAck, clif_parse_LoadEndAck_post);
 		addHookPost(clif, pUseSkillToId, clif_parse_UseSkillToId_post);
 		addHookPost(clif, getareachar_pc, clif_getareachar_pc_post);
 		addHookPost(pc, update_idle_time, pc_update_idle_time_post);
+		addHookPost(pc, authok, pc_authok_post);
+		addHookPost(chrif, save, chrif_save_post);
+		addHookPost(status, damage, status_damage_post);
 		
 		/* @Commands */
 		addAtcommand("bgrank", bgrank);
@@ -3646,35 +4420,36 @@ HPExport void plugin_init(void)
 		addScriptCommand("hBG_getkafrapoints","ii", hBG_getkafrapoints);
 		addScriptCommand("hBG_reward","iiiiisiii", hBG_reward);
 		addScriptCommand("hBG_flooritem2xy", "siiii", hBG_flooritem2xy);
+		
+		hBG_queue_db = idb_alloc(DB_OPT_RELEASE_DATA);
+		timer->add_func_list(hBG_send_xy_timer, "hBG_send_xy_timer");
+		timer->add_interval(timer->gettick() + interval , hBG_send_xy_timer, 0, 0, interval);
 	}
-
-	hBG_queue_db = idb_alloc(DB_OPT_RELEASE_DATA);
-
-	timer->add_func_list(hBG_send_xy_timer, "hBG_send_xy_timer");
-	
-	timer->add_interval(timer->gettick() + interval , hBG_send_xy_timer, 0, 0, interval);
-
-	hBG_build_guild_data();
-	ShowStatus("%s v%s has been initialized. [by Smokexyz]\n", pinfo.name, pinfo.version);
 }
 
 /* triggered when server starts loading, before any server-specific data is set */
 HPExport void server_preinit(void)
 {
-	addBattleConf("battle_configuration/hBG_enabled", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_from_town_only", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_ip_check", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_idle_announce", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_idle_autokick", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_balanced_queue", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_reward_rates", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_xy_interval", hBG_config_read, hBG_config_get, true);
-	addBattleConf("battle_configuration/hBG_ranked_mode", hBG_config_read, hBG_config_get, true);
+	if (SERVER_TYPE == SERVER_TYPE_MAP) {
+		addBattleConf("battle_configuration/hBG_enabled", hBG_config_read, hBG_config_get, true);
+		addBattleConf("battle_configuration/hBG_from_town_only", hBG_config_read, hBG_config_get, true);
+		addBattleConf("battle_configuration/hBG_ip_check", hBG_config_read, hBG_config_get, true);
+		addBattleConf("battle_configuration/hBG_idle_announce", hBG_config_read, hBG_config_get, true);
+		addBattleConf("battle_configuration/hBG_idle_autokick", hBG_config_read, hBG_config_get, true);
+		addBattleConf("battle_configuration/hBG_balanced_queue", hBG_config_read, hBG_config_get, true);
+		addBattleConf("battle_configuration/hBG_reward_rates", hBG_config_read, hBG_config_get, true);
+		addBattleConf("battle_configuration/hBG_xy_interval", hBG_config_read, hBG_config_get, true);
+		addBattleConf("battle_configuration/hBG_ranked_mode", hBG_config_read, hBG_config_get, true);
+	}
 }
 
 /* run when server is ready (online) */
 HPExport void server_online(void)
 {
+	if (SERVER_TYPE == SERVER_TYPE_MAP) {
+		hBG_build_guild_data();
+		ShowStatus("%s v%s has been initialized. [by Smokexyz]\n", pinfo.name, pinfo.version);
+	}
 }
 
 static int queue_db_final(union DBKey key, struct DBData *data, va_list ap)
@@ -3690,6 +4465,8 @@ static int queue_db_final(union DBKey key, struct DBData *data, va_list ap)
 /* run when server is shutting down */
 HPExport void plugin_final(void)
 {
-	hBG_queue_db->destroy(hBG_queue_db, queue_db_final);
-	ShowInfo ("%s v%s has been finalized. [by Smokexyz]\n",pinfo.name, pinfo.version);
+	if (SERVER_TYPE == SERVER_TYPE_MAP) {
+		hBG_queue_db->destroy(hBG_queue_db, queue_db_final);
+		ShowInfo ("%s v%s has been finalized. [by Smokexyz]\n", pinfo.name, pinfo.version);
+	}
 }
