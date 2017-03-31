@@ -19,24 +19,35 @@ This project is a full conversion and enhancement of eAmod's Battlegrounds syste
 
 #### Documentation
 ##### Available Battleground Modes
-[x] Capture the Flag
-[x] Eye of Storm
-[x] Triple Inferno
-[x] Team DeathMatch
-[x] Bossnia
-[x] Conquest
-[x] Stone Control
-[x] Domination
-[x] Rush
-[x] Free For All
+
+- [x] Capture the Flag
+
+- [x] Eye of Storm
+
+- [x] Triple Inferno
+
+- [x] Team DeathMatch
+
+- [x] Bossnia
+
+- [x] Conquest
+
+- [x] Stone Control
+
+- [x] Domination
+
+- [x] Rush
+
+- [x] Free For All
 
 ##### Script Commands
 
-***hBG_team_create***(<map_name>, <x>, <y>, <guild_index>, <logout_event>, <die_event>)
+***hBG_team_create***(<map_name>, <map_x>, <map_y>, <guild_index>, <logout_event>, <die_event>)
+
 : Creates a new battleground team.
 - `map_name` is a string argument.
-- `x` (int) co-ordinate.
-- `y` (int) co-ordinate.
+- `map_x` (int) co-ordinate.
+- `map_y` (int) co-ordinate.
 - `guild_index` (int) index of the battleground guild. (1-13)
 - `logout_event` (int) the npc event called when a player logs out. (used for cleanups)
 - `die_event` (string) the npc event called when a player dies.
@@ -210,7 +221,7 @@ This project is a full conversion and enhancement of eAmod's Battlegrounds syste
 - `team_id` (int) Battleground team Id.
 - @return 0 on failure, 1 on success.
 
-***hBG_getareausers***(<team_id>, <map_name>, <x1>, <y1>, <x2>, <y2>)
+***hBG_getareausers***(<team_id>, <map_name>, <map_x1>, <map_y1>, <map_x2>, <map_y2>)
 : Gets the user count within an area in a Battleground map.
 - `map_name` (string) Name of the battleground map.
 - `x1` (int)
@@ -274,7 +285,7 @@ This project is a full conversion and enhancement of eAmod's Battlegrounds syste
 - `bg_result` (int) Result of the Battleground (0 Won | 1 Tie | 2 Lost)
 - @return 0 on failure, 1 on success.
 
-***hBG_flooritem2xy***(<map_name>, <x>, <y>, <item_id>, <item_amount>)
+***hBG_flooritem2xy***(<map_name>, <map_x>, <map_y>, <item_id>, <item_amount>)
 : Adds an item on the floor of a map and it's given co-ordinates.
 Arguments are self-explanatory :D
 
