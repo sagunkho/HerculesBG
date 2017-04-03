@@ -253,7 +253,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -270,9 +270,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -281,7 +281,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -315,7 +315,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -332,9 +332,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -343,7 +343,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -377,7 +377,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -394,9 +394,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -405,7 +405,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -439,7 +439,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -456,9 +456,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -467,7 +467,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -501,7 +501,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -518,9 +518,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -529,7 +529,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -563,7 +563,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -580,9 +580,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -591,7 +591,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -628,7 +628,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -645,9 +645,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -656,7 +656,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -690,7 +690,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -707,9 +707,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -718,7 +718,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -752,7 +752,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -769,9 +769,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -780,7 +780,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -814,7 +814,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -831,9 +831,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -842,7 +842,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -876,7 +876,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -893,9 +893,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -904,7 +904,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
@@ -938,7 +938,7 @@ OnTouch:
 	{ // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .Count, 0;
+		set .count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -955,9 +955,9 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.Count, .Count + 1) >= 5 )
+	if( set(.count, .count + 1) >= 5 )
 	{
-		set .Count, 0;
+		set .count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -966,7 +966,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .Count, 0;
+	set .count, 0;
 	end;
 }
 
