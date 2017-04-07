@@ -23,7 +23,7 @@ bat_room	mapflag	town
 
 function	script	get_arena_id	{
     set .@arena$, getarg(0);
-    
+
     if (strcmp(.@arena$, "Flavius_CTF") == 0) {
         return 1;
     } else if (strcmp(.@arena$, "Tierra_EOS") == 0) {
@@ -66,16 +66,16 @@ OnInit:
 	// Battleground announcement colors.
 	setarray .BG_Color$[0],        "0x2F9F2D",       "0xAA00FF",        "0xFF0033",    "0x33FF99",   "0x3399FF",  "0xFFA500",    "0x9ACD32",    "0x4169E1",   "0xDDA0DD";
 
-	// Team Building Mode : 
+	// Team Building Mode :
 	// 0 = Lineal [Keeps parties together]
 	// 1 = Random
-	set .TeamBuildingMode, 1;
+	.TeamBuildingMode = 1;
 
 	// Battleground @commands (@joinbg, @leavebg).
-	set .BGCommandsEnabled, 1; // (1 to enable, 0 to disable)
+	.BGCommandsEnabled = 1; // (1 to enable, 0 to disable)
 
 	// Minimum Level to join the BG queue.
-	set .BGQueue_Level_Min, 80;
+	.BGQueue_Level_Min = 80;
 
 	if (.BGCommandsEnabled) {
         /* Admin / GM Commands */
@@ -87,20 +87,20 @@ OnInit:
 	}
 
 	/* * * * * DO NOT TOUCH ANYTHING BELOW THIS LINE * * * * * * * * * * * * * * * */
-	set .TotalArenas, getarraysize(.BG_Arenas$);
-	set .BG_Queue, hBG_queue_create("Battleground Arena","BG_Queue_Handler::OnQueueJoinEvent",.BGQueue_Level_Min);
-	set .FFA_Queue, hBG_queue_create("Free For All Arena","BG_Queue_Handler::OnFFAQueueJoinEvent",.BGQueue_Level_Min);
+	.TotalArenas = getarraysize(.BG_Arenas$);
+	.BG_Queue = hBG_queue_create("Battleground Arena","BG_Queue_Handler::OnQueueJoinEvent",.BGQueue_Level_Min);
+	.FFA_Queue = hBG_queue_create("Free For All Arena","BG_Queue_Handler::OnFFAQueueJoinEvent",.BGQueue_Level_Min);
 
 	// Move to Next Arena
 	if ($BG_Index >= .TotalArenas)
-		set $BG_Index,0; // Restart Rotation
+		$BG_Index = 0; // Restart Rotation
 
-	set .BG_Arena$,.BG_Arenas$[$BG_Index];
+	.BG_Arena$ = .BG_Arenas$[$BG_Index];
 	initnpctimer; // Initiate rotation timer.
-	set .hBGEnabled$, "battle_configuration/hBG_enabled";
+	.hBGEnabled$ = "battle_configuration/hBG_enabled";
 	end;
 
-OnBGStartCommand: 
+OnBGStartCommand:
     setbattleflag .hBGEnabled$, 1;
     message strcharinfo(0),"Battlegrounds have been enabled.";
     goto OnEndArena;
@@ -109,12 +109,13 @@ OnBGStopCommand:
     message strcharinfo(0),"Battlegrounds have been disabled.";
     .@msg$ = "[Battlegrounds] Arenas and Queuing have been disabled by a Game Master.";
 	announce .@msg$, 0, 0x00FFFF, 0x190, 12, 100, 100;
-    donpcevent .BG_Arena$+"::OnMatchEnd";
+	if ($@Arena_Status != 0)
+    	donpcevent .BG_Arena$+"::OnMatchEnd";
     goto OnEndArena;
 
 // @joinbg
 OnDoJoin:
-    if (!getbattleflag(.hBGEnabled$)) {
+    if (getbattleflag(.hBGEnabled$) == 0) {
         message strcharinfo(0),"Battlegrounds are currently disabled.";
         end;
 	} else if (questprogress(8506,PLAYTIME) == 2) {
@@ -135,6 +136,8 @@ OnDoLeave:
 // Triggers after an arena has ended.
 OnEndArena:
 	set $@Arena_Status, 0;
+	if ($@BG_Team1 == 0 && $@BG_Team2 == 0 && $@BG_Team3 == 0)
+		end;
 	// Warps teams back to the battle room.
 	bg_warp $@BG_Team1,"bat_room",155,150;
 	bg_warp $@BG_Team2,"bat_room",155,150;
@@ -148,12 +151,13 @@ OnEndArena:
 OnRotate:
 // Rotate every n seconds.
 OnTimer5000:
-    if (!getbattleflag(.hBGEnabled$)) end;
+    if (getbattleflag(.hBGEnabled$) == 0) end;
 	// Restart from index 0, if reached max.
-	if (set($BG_Index,$BG_Index + 1) >= .TotalArenas)
-		set $BG_Index,0;
+	$BG_Index = $BG_Index + 1;
+	if ($BG_Index >= .TotalArenas)
+		$BG_Index = 0;
 
-	set .BG_Arena$,.BG_Arenas$[$BG_Index];
+	.BG_Arena$ = .BG_Arenas$[$BG_Index];
 	initnpctimer;
 	// Fall through
 // Called every time someone joins the Queue.
@@ -165,17 +169,17 @@ OnQueueJoinEvent:
 	if ($@Arena_Status == 2)
 		end;
 
-	set .@Queue_Count, hBG_queue_data(.BG_Queue,0);
+	.@Queue_Count = hBG_queue_data(.BG_Queue,0);
 	switch($@Arena_Status) {
 	case 0: // Idle, ready to start.
 		// Set total Arena teams
 		if (.BG_Arena$ == "Tierra_TI")
-			set .@TotalTeams, 3;
+			.@TotalTeams = 3;
 		else
-			set .@TotalTeams, 2;
+			.@TotalTeams = 2;
 
 		// Set total minimum Arena players.
-		set .@Req, .BG_Players_Min[$BG_Index] * .@TotalTeams;
+		.@Req = .BG_Players_Min[$BG_Index] * .@TotalTeams;
 
 		// Check if the required number of players have been reached, and process.
 		if (.@Queue_Count >= .@Req) {
@@ -191,15 +195,15 @@ OnQueueJoinEvent:
 			stopnpctimer;
 
 			// Set BG Status as Ongoing.
-			set $@Arena_Status,1;
+			$@Arena_Status = 1;
 
-			set .@msg$, "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is commencing.";
+			.@msg$ = "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is commencing.";
 			announce .@msg$,0,.BG_Color$[$BG_Index],0x190,12,100,100;
 
 			// Start Battleground Events.
 			donpcevent .BG_Arena$ + "::OnReady";
 		} else { // Required players have not been reached.
-			set .@msg$, "[Battlegrounds] "+.BG_Names$[$BG_Index]+" requires "+(.@Req - .@Queue_Count)+" more player(s) to start.";
+			.@msg$ = "[Battlegrounds] "+.BG_Names$[$BG_Index]+" requires "+(.@Req - .@Queue_Count)+" more player(s) to start.";
 			announce .@msg$,0,.BG_Color$[$BG_Index],0x190,12,100,100;
 		}
 		break;
@@ -207,17 +211,17 @@ OnQueueJoinEvent:
 		if (.@Queue_Count > 0) {
 			if (.BG_Arena$ == "Tierra_TI") {
 				hBG_balance_teams .BG_Queue,.BG_Players_Max[$BG_Index],.TeamBuildingMode,$@BG_Team1,$@BG_Team2,$@BG_Team3;
-				set .@BG_Count1, hBG_get_data($@BG_Team1,0);
-				set .@BG_Count2, hBG_get_data($@BG_Team2,0);
-				set .@BG_Count3, hBG_get_data($@BG_Team3,0);
-				set .@msg$, "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is ongoing. Blue Team: " + .@BG_Count1 + "/" + .BG_Players_Max[$BG_Index] + ", Red Team: " + .@BG_Count2 + "/" + .BG_Players_Max[$BG_Index] + ", Green Team: " + .@BG_Count3 + "/" + .BG_Players_Max[$BG_Index] + ".";
+				.@BG_Count1 = hBG_get_data($@BG_Team1, 0);
+				.@BG_Count2 = hBG_get_data($@BG_Team2, 0);
+				.@BG_Count3 = hBG_get_data($@BG_Team3, 0);
+				.@msg$ = "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is ongoing. Blue Team: " + .@BG_Count1 + "/" + .BG_Players_Max[$BG_Index] + ", Red Team: " + .@BG_Count2 + "/" + .BG_Players_Max[$BG_Index] + ", Green Team: " + .@BG_Count3 + "/" + .BG_Players_Max[$BG_Index] + ".";
 			} else {
 				hBG_balance_teams .BG_Queue,.BG_Players_Max[$BG_Index],.TeamBuildingMode,$@BG_Team1,$@BG_Team2;
-				set .@BG_Count1, hBG_get_data($@BG_Team1,0);
-				set .@BG_Count2, hBG_get_data($@BG_Team2,0);
-				set .@msg$, "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is ongoing. Blue Team: " + .@BG_Count1 + "/" + .BG_Players_Max[$BG_Index] + ", Red Team: " + .@BG_Count2 + "/" + .BG_Players_Max[$BG_Index] + ".";
+				.@BG_Count1 = hBG_get_data($@BG_Team1, 0);
+				.@BG_Count2 = hBG_get_data($@BG_Team2, 0);
+				.@msg$ = "[Battlegrounds] " + .BG_Names$[$BG_Index] + " is ongoing. Blue Team: " + .@BG_Count1 + "/" + .BG_Players_Max[$BG_Index] + ", Red Team: " + .@BG_Count2 + "/" + .BG_Players_Max[$BG_Index] + ".";
 			}
-			announce .@msg$,0,.BG_Color$[$BG_Index],0x190,12,100,100;
+			announce .@msg$, 0, .BG_Color$[$BG_Index], 0x190, 12, 100, 100;
 		}
 	default:
 		break;
@@ -228,7 +232,7 @@ OnFFAQueueJoinEvent:
 	if ($@FFA_Arena_Status != 0)
 		end;
 
-	set .@Queue_Count, hBG_queue_data(.FFA_Queue,0);
+	.@Queue_Count = hBG_queue_data(.FFA_Queue, 0);
 
 	if (.@Queue_Count >= 10) {
 		donpcevent "FFA_Arena::OnBuildTeams";
@@ -620,6 +624,6 @@ bat_room,148,150,4	script	Teleporter#bat	4_F_TELEPORTER,{
  * Battleground Kafra Staff
  */
 bat_room,148,147,4	script	Kafra Staff::kaf_bat	4_F_KAFRA9,{
-	cutin "kafra_09",2;
-    callfunc "F_Kafra", 5, 0, 1, 20, 600;
+	cutin "kafra_09", 2;
+	callfunc "F_Kafra", 0, 2, 1, 150, 0;
 }

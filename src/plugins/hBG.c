@@ -216,11 +216,11 @@ struct hBG_queue_member
 struct hBG_stats
 {
 	unsigned int
-	best_damage,
 	total_damage_done,
 	total_damage_received;
 	
 	unsigned short
+	best_damage,
 	// Triple Inferno
 	ti_wins,
 	ti_lost,
@@ -2361,7 +2361,9 @@ BUILDIN(hBG_queue_data)
 	}
 
 	switch (type) {
-		case 0: script_pushint(st, hBGqd->users); break;
+		case 0:
+			script_pushint(st, hBGqd->users);
+			return true;
 		case 1: // User List
 		{
 			int j = 0;
@@ -2377,7 +2379,7 @@ BUILDIN(hBG_queue_data)
 			}
 			script_pushint(st,j);
 		}
-			break;
+			return true;
 		default:
 			ShowError("script:hBG_queue_data: unknown queue data type %d.\n", type);
 			break;
@@ -3969,13 +3971,15 @@ bool chrif_save_post(bool ret, struct map_session_data *sd, int flag)
 /**
  * Status Post Hooks
  */
-int status_damage_post(int ret, struct block_list *src,struct block_list *target,int64 in_hp, int64 in_sp, int walkdelay, int flag)
+int status_damage_post(int ret, struct block_list *src, struct block_list *target,int64 in_hp, int64 in_sp, int walkdelay, int flag)
 {
 	struct map_session_data *sd = NULL;
 	struct hBG_map_session_data *hBGsd = NULL;
 
-	nullpo_retr(ret, src);
 	nullpo_retr(ret, target);
+
+	if (src == NULL)
+		return ret;
 
 	if (src->type != BL_PC || (sd = BL_UCAST(BL_PC, src)) == NULL)
 		return ret;
@@ -4068,10 +4072,10 @@ void char_bgstats_tosql(int fd)
 			"`sp_used`, `zeny_used`, `spiritb_used`, `ammo_used`)"
 			" VALUES "
 			"('%d',"
-			"'%u','%u','%u',"
+			"'%d','%u','%u',"
 			"'%d','%d','%d','%d',"
 			"'%d','%d','%d','%d','%d',"
-			"'%ud','%u','%d','%d','%d','%d',"
+			"'%u','%d','%d','%d','%d','%d',"
 			"'%d','%d','%d','%d','%d','%d',"
 			"'%d','%d','%d','%d','%d',"
 			"'%d','%d','%d','%d','%d','%d',"
@@ -4079,9 +4083,9 @@ void char_bgstats_tosql(int fd)
 			"'%d','%d','%d','%d','%d',"
 			"'%d','%d','%d',"
 			"'%d','%d','%d','%d','%d','%d','%d','%d','%d','%d','%d','%d','%d',"
-			"'%ud','%ud','%ud','%ud','%ud','%ud','%ud','%ud',"
-			"'%ud','%ud','%ud','%ud',"
-			"'%ud','%ud','%ud','%ud')",
+			"'%u','%u','%u','%u','%u','%u','%u','%u',"
+			"'%u','%u','%u','%u',"
+			"'%u','%u','%u','%u')",
 			char_id,
 			pstats.best_damage, pstats.total_damage_done, pstats.total_damage_received,
 			pstats.ti_wins,pstats.ti_lost,pstats.ti_tie,
