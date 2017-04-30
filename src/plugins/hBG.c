@@ -4008,8 +4008,9 @@ void hBG_statistics_parsefromchar(int fd)
  	int char_fd = RFIFOL(fd,10);
 	
 	nullpo_retv(sockt->session[char_fd]);
-	
-	sd = sockt->session[char_fd]->session_data;
+
+	if ((sd = sockt->session[char_fd]->session_data) == NULL)
+		return;
 
 	if ((hBGsd = getFromMSD(sd, 1)) == NULL) {
 		CREATE(hBGsd, struct hBG_map_session_data, 1);
