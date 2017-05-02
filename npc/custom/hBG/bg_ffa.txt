@@ -37,7 +37,7 @@ OnBuildTeams:
 
 // Area Respawn - 66,68,133,115
 OnReady:
-	if( $@FFA_Arena_Status != 1 )
+	if ($@FFA_Arena_Status != 1)
 		end;
 
 	initnpctimer;
@@ -45,8 +45,7 @@ OnReady:
 	set .TopTeam,0;
 	set .Top,0;
 	sleep 2000;
-	for( set .@i, 0; .@i < 10; set .@i, .@i + 1 )
-	{
+	for( set .@i, 0; .@i < 10; set .@i, .@i + 1) {
 		bg_warp $@FFA_Team[.@i],"RespawnPoint",0,0;
 	}
 	sleep 2000;
@@ -54,8 +53,7 @@ OnReady:
 	donpcevent "#ffa1_respawn::OnBGStart";
 	donpcevent "#ffa2_respawn::OnBGStart";
 	sleep 1000;
-	for( set .@i, 0; .@i < 10; set .@i, .@i + 1 )
-	{
+	for( set .@i, 0; .@i < 10; set .@i, .@i + 1) {
 		hBG_team_reveal $@FFA_Team[.@i];
 		hBG_team_updatescore $@FFA_Team[.@i],.Score[.@i];
 	}
@@ -66,26 +64,23 @@ OnQuit:
 	end;
 
 OnKilled:
-	if( $@FFA_Arena_Status != 1 ) end;
-	for( set .@i, 0; .@i < 10; set .@i, .@i + 1 )
-	{
-		if( @killer_bg_id == $@FFA_Team[.@i] ) break;
+	if ($@FFA_Arena_Status != 1 ) end;
+	for( set .@i, 0; .@i < 10; set .@i, .@i + 1) {
+		if (@killer_bg_id == $@FFA_Team[.@i] ) break;
 	}
-	if( .@i >= 10 ) end; // Not Found
-	if( $@FFA_Team[.@i] == getcharid(4) ) end; // Same Team - Suicide
+	if (.@i >= 10 ) end; // Not Found
+	if ($@FFA_Team[.@i] == getcharid(4) ) end; // Same Team - Suicide
 	set .Score[.@i],.Score[.@i] + 1;
-	if( .Top < .Score[.@i] )
-	{
+	if (.Top < .Score[.@i]) {
 		set .Top, .Score[.@i];
-		if( .TopTeam != $@FFA_Team[.@i] )
-		{
+		if (.TopTeam != $@FFA_Team[.@i]) {
 			mapannounce "bat_c01","- Player [" + .Names$[.@i] + "] is taking the lead -",1,0x483D8B;
 			set .TopTeam, $@FFA_Team[.@i];
 		}
 	}
 
 	hBG_team_updatescore $@FFA_Team[.@i],.Score[.@i];
-	if( .Score[.@i] >= 25 ) donpcevent "FFA_Arena::OnMatchEnd";
+	if (.Score[.@i] >= 25 ) donpcevent "FFA_Arena::OnMatchEnd";
 	end;
 
 OnTimer600000:
@@ -105,10 +100,9 @@ OnMatchEnd:
 	// =======================================================
 	// Team Rewards
 	// =======================================================
-	for( set .@i, 0; .@i < 10; set .@i, .@i + 1 )
-	{
+	for( set .@i, 0; .@i < 10; set .@i, .@i + 1) {
 		set .@Reward, 1 + (.Score[.@i] / 5);
-		if( $@FFA_Team[.@i] == .TopTeam )
+		if ($@FFA_Team[.@i] == .TopTeam)
 			set .@Reward, .@Reward + 5;
 
 		hBG_getitem $@FFA_Team[.@i],7773,.@Reward;
@@ -118,8 +112,7 @@ OnMatchEnd:
 	set .TopTeam,0;
 	set .Top,0;
 	sleep 5000;
-	for( set .@i, 0; .@i < 10; set .@i, .@i + 1 )
-	{
+	for( set .@i, 0; .@i < 10; set .@i, .@i + 1) {
 		bg_warp $@FFA_Team[.@i],"bat_room",155,150;
 		hBG_destroy $@FFA_Team[.@i];
 	}
@@ -148,7 +141,7 @@ bat_c01	mapflag	nopenalty
 
 bat_c01,50,131,5	script	Therapist in battle#fa1	4_F_SISTER,{
 	getmapxy .@map$, .@cx, .@cy, 0; // Current Char Position
-	if( .@cx < 50 || .@cx > 57 || .@cy < 124 || .@cy > 131 ) end;
+	if (.@cx < 50 || .@cx > 57 || .@cy < 124 || .@cy > 131 ) end;
 	mes "[Therapist in battle]";
 	mes "Just close your eyes, and take a deep breathe.";
 	mes "You can be free from pain.";
@@ -162,7 +155,7 @@ bat_c01,50,131,5	script	Therapist in battle#fa1	4_F_SISTER,{
 
 bat_c01,149,52,3	script	Therapist in battle#fa2	4_F_SISTER,{
 	getmapxy .@map$, .@cx, .@cy, 0; // Current Char Position
-	if( .@cx < 142 || .@cx > 149 || .@cy < 52 || .@cy > 59 ) end;
+	if (.@cx < 142 || .@cx > 149 || .@cy < 52 || .@cy > 59 ) end;
 	mes "[Therapist in battle]";
 	mes "Just close your eyes, and take a deep breathe.";
 	mes "You can be free from pain.";

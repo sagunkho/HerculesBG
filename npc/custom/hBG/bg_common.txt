@@ -22,49 +22,49 @@ bat_room	mapflag	nosave	SavePoint
 bat_room	mapflag	town
 
 function	script	get_arena_id	{
-    set .@arena$, getarg(0);
+	set .@arena$, getarg(0);
 
-    if (strcmp(.@arena$, "Flavius_CTF") == 0) {
-        return 1;
-    } else if (strcmp(.@arena$, "Tierra_EOS") == 0) {
-        return 2;
-    } else if (strcmp(.@arena$, "Tierra_TI") == 0) {
-        return 3;
-    } else if (strcmp(.@arena$, "Flavius_TD") == 0) {
-        return 4;
-    } else if (strcmp(.@arena$, "Tierra_Boss") == 0) {
-        return 5;
-    } else if (strcmp(.@arena$, "Conquest") == 0) {
-        return 6;
-    } else if (strcmp(.@arena$, "Flavius_SC") == 0) {
-        return 7;
-    } else if (strcmp(.@arena$, "Tierra_DOM") == 0) {
-        return 8;
-    } else if (strcmp(.@arena$, "Rush") == 0) {
-        return 9;
-    }
+	if (strcmp(.@arena$, "Flavius_CTF") == 0) {
+		return 1;
+	} else if (strcmp(.@arena$, "Tierra_EOS") == 0) {
+		return 2;
+	} else if (strcmp(.@arena$, "Tierra_TI") == 0) {
+		return 3;
+	} else if (strcmp(.@arena$, "Flavius_TD") == 0) {
+		return 4;
+	} else if (strcmp(.@arena$, "Tierra_Boss") == 0) {
+		return 5;
+	} else if (strcmp(.@arena$, "Conquest") == 0) {
+		return 6;
+	} else if (strcmp(.@arena$, "Flavius_SC") == 0) {
+		return 7;
+	} else if (strcmp(.@arena$, "Tierra_DOM") == 0) {
+		return 8;
+	} else if (strcmp(.@arena$, "Rush") == 0) {
+		return 9;
+	}
 
-    return 0;
+	return 0;
 }
 /**
  * Battleground Queue Handler
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
--	script	BG_Queue_Handler	-1,{
+-	script	BG_Queue_Handler	FAKE_NPC,{
 	end;
 
 OnInit:
 	// Arena Configuration
 	// All Arena settings are listed below, newer ones can be appended to the arrays.
 	// Arenas when listed will be available in the auto-rotation.
-	setarray .BG_Arenas$[0],       "Flavius_CTF",    "Tierra_EOS",   "Tierra_TI",     "Flavius_TD", "Tierra_Boss","Conquest",    "Flavius_SC",  "Tierra_DOM",   "Rush";
+	setarray .BG_Arenas$[0],       "Flavius_CTF",    "Tierra_EOS",   "Tierra_TI",     "Flavius_TD", "Tierra_Boss","Conquest",  "Flavius_SC",  "Tierra_DOM",   "Rush";
 	// Battleground Arena Name for announcements.
-	setarray .BG_Names$[0],      "Capture the Flag","Eye of Storm","Triple Inferno","Team DeathMatch","Bossnia",  "Conquest",   "Stone Control","Domination",   "Rush";
+	setarray .BG_Names$[0],      "Capture the Flag","Eye of Storm","Triple Inferno","Team DeathMatch","Bossnia",  "Conquest",  "Stone Control","Domination",   "Rush";
 	// Minimum Players required to start the Battleground.
-	setarray .BG_Players_Min[0],        1,               1,                1,              1,            1,           5,             1,             1,            1;
+	setarray .BG_Players_Min[0],        1,               1,               1,              1,            1,           5,             1,             1,            1;
 	// Maximum Players per Team
-	setarray .BG_Players_Max[0],        35,              35,               35,             35,           35,          50,            35,            35,           30;
+	setarray .BG_Players_Max[0],        35,              35,             35,              35,           35,          50,            35,            35,           30;
 	// Battleground announcement colors.
-	setarray .BG_Color$[0],        "0x2F9F2D",       "0xAA00FF",        "0xFF0033",    "0x33FF99",   "0x3399FF",  "0xFFA500",    "0x9ACD32",    "0x4169E1",   "0xDDA0DD";
+	setarray .BG_Color$[0],         "0x2F9F2D",      "0xAA00FF",      "0xFF0033",     "0x33FF99",   "0x3399FF",  "0xFFA500",    "0x9ACD32",    "0x4169E1",   "0xDDA0DD";
 
 	// Team Building Mode :
 	// 0 = Lineal [Keeps parties together]
@@ -78,10 +78,10 @@ OnInit:
 	.BGQueue_Level_Min = 80;
 
 	if (.BGCommandsEnabled) {
-        /* Admin / GM Commands */
-        bindatcmd "bgstart","BG_Queue_Handler::OnBGStartCommand",99,99;
-        bindatcmd "bgstop","BG_Queue_Handler::OnBGStopCommand",99,99;
-        /* Player Commands */
+		/* Admin / GM Commands */
+		bindatcmd "bgstart","BG_Queue_Handler::OnBGStartCommand",99,99;
+		bindatcmd "bgstop","BG_Queue_Handler::OnBGStopCommand",99,99;
+		/* Player Commands */
 		bindatcmd "joinbg","BG_Queue_Handler::OnDoJoin",0,99;
 		bindatcmd "leavebg","BG_Queue_Handler::OnDoLeave",0,99;
 	}
@@ -101,23 +101,23 @@ OnInit:
 	end;
 
 OnBGStartCommand:
-    setbattleflag .hBGEnabled$, 1;
-    message strcharinfo(0),"Battlegrounds have been enabled.";
-    goto OnEndArena;
+	setbattleflag .hBGEnabled$, 1;
+	message strcharinfo(0),"Battlegrounds have been enabled.";
+	callsub OnEndArena;
 OnBGStopCommand:
-    setbattleflag .hBGEnabled$, 0;
-    message strcharinfo(0),"Battlegrounds have been disabled.";
-    .@msg$ = "[Battlegrounds] Arenas and Queuing have been disabled by a Game Master.";
+	setbattleflag .hBGEnabled$, 0;
+	message strcharinfo(0),"Battlegrounds have been disabled.";
+	.@msg$ = "[Battlegrounds] Arenas and Queuing have been disabled by a Game Master.";
 	announce .@msg$, 0, 0x00FFFF, 0x190, 12, 100, 100;
 	if ($@Arena_Status != 0)
-    	donpcevent .BG_Arena$+"::OnMatchEnd";
-    goto OnEndArena;
+		donpcevent .BG_Arena$+"::OnMatchEnd";
+	callsub OnEndArena;
 
 // @joinbg
 OnDoJoin:
-    if (getbattleflag(.hBGEnabled$) == 0) {
-        message strcharinfo(0),"Battlegrounds are currently disabled.";
-        end;
+	if (getbattleflag(.hBGEnabled$) == 0) {
+		message strcharinfo(0),"Battlegrounds are currently disabled.";
+		end;
 	} else if (questprogress(8506,PLAYTIME) == 2) {
 		erasequest 8506;
 	} else if (questprogress(8506,PLAYTIME) == 1) {
@@ -143,15 +143,15 @@ OnEndArena:
 	bg_warp $@BG_Team2,"bat_room",155,150;
 	bg_warp $@BG_Team3,"bat_room",155,150;
 	// Destroy Teams
-	hBG_destroy $@BG_Team1; set $@BG_Team1, 0;
-	hBG_destroy $@BG_Team2; set $@BG_Team2, 0;
-	hBG_destroy $@BG_Team3; set $@BG_Team3, 0;
+	if ($@BG_Team1 != 0) hBG_destroy $@BG_Team1; set $@BG_Team1, 0;
+	if ($@BG_Team2 != 0) hBG_destroy $@BG_Team2; set $@BG_Team2, 0;
+	if ($@BG_Team3 != 0) hBG_destroy $@BG_Team3; set $@BG_Team3, 0;
 	// Fall through
 // Start Arena rotation.
 OnRotate:
 // Rotate every n seconds.
 OnTimer5000:
-    if (getbattleflag(.hBGEnabled$) == 0) end;
+	if (getbattleflag(.hBGEnabled$) == 0) end;
 	// Restart from index 0, if reached max.
 	$BG_Index = $BG_Index + 1;
 	if ($BG_Index >= .TotalArenas)
@@ -248,7 +248,7 @@ OnFFAQueueJoinEvent:
 /**
  * Battleground Recruiter
  */
--	script	BG_Register	-1,{
+-	script	BG_Register	FAKE_NPC,{
 	set .@name$, "[^FFA500Battle Recruiter^000000]";
 	if (getvariableofnpc(.Ready,"BG_Queue_Handler") == 0)
 		donpcevent "BG_Queue_Handler::OnInit";
@@ -261,15 +261,13 @@ OnFFAQueueJoinEvent:
 	mes "The two princes of the kingdom are now battling for the throne of Maroll, and are in need of experienced soldiers like you.";
 	mes "How would you like to lend your power to one of the princes in the Maroll Kingdom?";
 	next;
-	switch(select("^FFA500Battleground Arenas^000000:^0000FFFree For All Arena^000000:Warp to Battle Room"))
-	{
+	switch(select("^FFA500Battleground Arenas^000000:^0000FFFree For All Arena^000000:Warp to Battle Room")) {
 	case 1:
 		mes .@name$;
 		mes "Battleground Arenas are different kinds of games where teams fight for victory.";
 		mes "What do you want to do?";
 		next;
-		switch(select("Register:Party Register:Leave Queue:Battleground Help"))
-		{
+		switch(select("Register:Party Register:Leave Queue:Battleground Help")) {
 		case 1:
 			if (BaseLevel < .BGQueue_Level_Min) {
 				mes .@name$;

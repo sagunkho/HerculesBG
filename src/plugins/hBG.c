@@ -2024,10 +2024,10 @@ void hBG_record_mobkills(struct map_session_data *sd, struct mob_data *md)
 void hBG_record_damage(struct block_list *src, struct block_list *target, int damage)
 {
 	struct block_list *s_bl = NULL;
-	struct map_session_data *sd = NULL, *tsd = NULL;
-	struct hBG_map_session_data *hBGsd = NULL, *hBGtsd = NULL;
+	struct map_session_data *sd = NULL;
+	struct hBG_map_session_data *hBGsd = NULL;
 
-	if (!src || !target || src == target || damage <= 0)
+	if (src == NULL || target == NULL || src == target || damage <= 0)
 		return;
 
 	if ((s_bl = battle->get_master(src)) == NULL)
@@ -2036,21 +2036,31 @@ void hBG_record_damage(struct block_list *src, struct block_list *target, int da
 	if (s_bl->type != BL_PC)
 		return;
 
-	if ((sd = BL_UCAST(BL_PC, s_bl)) == NULL || (tsd = BL_UCAST(BL_PC, target)) == NULL)
+	if ((sd = BL_UCAST(BL_PC, s_bl)) == NULL)
 		return;
 
-	if ((hBGsd = getFromMSD(sd, 1)) == NULL || (hBGtsd = getFromMSD(tsd, 1)) == NULL)
+	if ((hBGsd = getFromMSD(sd, 1)) == NULL)
 		return;
 
 	switch ( target->type)
 	{
 	case BL_PC:
-		if (map->list[src->m].flag.battleground && sd->bg_id) {
-			add2limit(hBGsd->stats.total_damage_done, damage, UINT_MAX);
-			add2limit(hBGtsd->stats.total_damage_received, damage, UINT_MAX);
+		{
+			struct map_session_data *tsd = NULL;
+			struct hBG_map_session_data *hBGtsd = NULL;
 
-			if (hBGsd->stats.best_damage < damage)
-				hBGsd->stats.best_damage = damage;
+			if ((tsd = BL_UCAST(BL_PC, target)) == NULL)
+				break;
+			if ((hBGtsd = getFromMSD(tsd, 1)) == NULL)
+				break;
+
+			if (map->list[src->m].flag.battleground && sd->bg_id) {
+				add2limit(hBGsd->stats.total_damage_done, damage, UINT_MAX);
+				add2limit(hBGtsd->stats.total_damage_received, damage, UINT_MAX);
+
+				if (hBGsd->stats.best_damage < damage)
+					hBGsd->stats.best_damage = damage;
+			}
 		}
 		break;
 	case BL_MOB:

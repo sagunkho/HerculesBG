@@ -26,17 +26,16 @@ OnInit:
 OnGuillaumeQuit:
 OnCroixQuit:
 	setquest 8506; // Deserter
-	if( $@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Rush" )
+	if ($@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Rush")
 		donpcevent "BG_Queue_Handler::OnQueueJoinEvent";
 	end;
 
 OnBuildTeams:
-	if( set(.index,.index + 1) > 3 )
+	if (set(.index,.index + 1) > 3)
 		set .index, 0;
 	//announce ".index"+.index,0;
 
-	switch( .index )
-	{
+	switch( .index) {
 	case 0: set .rush_castle$,"rush_cas01"; set .guil_x,202; set .guil_y,230; set .croix_x,202; set .croix_y,226; break;
 	case 1: set .rush_castle$,"rush_cas02"; set .guil_x,146; set .guil_y, 50; set .croix_x,146; set .croix_y, 46; break;
 	case 2: set .rush_castle$,"rush_cas03"; set .guil_x, 60; set .guil_y, 13; set .croix_x, 64; set .croix_y, 13; break;
@@ -48,17 +47,16 @@ OnBuildTeams:
 	end;
 
 OnReady:
-	if( getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Rush" )
+	if (getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Rush")
 		end;
 
 	initnpctimer;
 	initnpctimer "Rush_Respawn";
 	set .guill_score, 0;
-	set .Croix_Score, 0;
+	set .croix_score, 0;
 	set .dfndr, 0; // No Defender
 	// Emperium =====================
-	switch( .index )
-	{
+	switch( .index) {
 	case 0: // =========================================================================
 		bg_monster 0,.rush_castle$,158,174,"Emperium",2107,"Rush::OnEmperium";
 		break;
@@ -75,8 +73,7 @@ OnReady:
 	// ======================================
 	//donpcevent "::OnEmblemRush";
 	sleep 2000;
-	switch( .index )
-	{
+	switch( .index) {
 	case 0:
 		bg_warp $@BG_Team1,.rush_castle$,43,229;
 		bg_warp $@BG_Team2,.rush_castle$,43,229;
@@ -107,31 +104,28 @@ OnTimer360000:
 	end;
 
 OnEmperium:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Rush" )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Rush")
 		end;
 
-	if( .dfndr == 0 )
-	{ // First Capture
+	if (.dfndr == 0) { // First Capture
 		initnpctimer;
 		set .dfndr,getcharid(4);
-		if( .dfndr == $@BG_Team1 )
-		{
+		if (.dfndr == $@BG_Team1) {
 			set .guill_score,1;
 			mapannounce .rush_castle$,"General Guillaume : Castle captured, now prepare to Defend it!!",1,0x0000FF;
 			bg_warp $@BG_Team2,"RespawnPoint",0,0; // To Cementery and Wait
 		}
 		else
 		{
-			set .Croix_Score,1;
+			set .croix_score,1;
 			mapannounce .rush_castle$,"Prince Croix : Castle captured, now prepare to Defend it!!",1,0xFF0000;
 			bg_warp $@BG_Team1,"RespawnPoint",0,0; // To Cementery and Wait
 		}
 
-		hBG_updatescore .rush_castle$,.guill_score,.Croix_Score;
+		hBG_updatescore .rush_castle$,.guill_score,.croix_score;
 
 		// Emperium =====================
-		switch( .index )
-		{
+		switch( .index) {
 		case 0: // =========================================================================
 			bg_monster .dfndr,.rush_castle$,158,174,"Emperium",2107,"Rush::OnEmperium";
 			break;
@@ -149,7 +143,7 @@ OnEmperium:
 		initnpctimer "Rush_Respawn";
 
 		sleep 5000;
-		if( .dfndr == $@BG_Team1 )
+		if (.dfndr == $@BG_Team1)
 			mapannounce .rush_castle$,"Prince Croix : Capture the Castle, it's our last chance to Win!!",1,0xFF0000;
 		else
 			mapannounce .rush_castle$,"General Guillaume : Capture the Castle, it's our last chance to Win!!",1,0x0000FF;
@@ -157,13 +151,10 @@ OnEmperium:
 	}
 
 	// Second Capture
-	if( .dfndr == $@BG_Team1 )
-	{
-		set .Croix_Score,2;
+	if (.dfndr == $@BG_Team1) {
+		set .croix_score,2;
 		mapannounce .rush_castle$,"Prince Croix : Castle captured, we won the Battle!!",1,0xFF0000;
-	}
-	else
-	{
+	} else {
 		set .guill_score,2;
 		mapannounce .rush_castle$,"General Guillaume : Castle captured, we won the Battle!!",1,0x0000FF;
 	}
@@ -171,16 +162,13 @@ OnEmperium:
 	end;
 
 OnTimer420000:
-	if( .dfndr == 0 )
+	if (.dfndr == 0)
 		mapannounce .rush_castle$,"Castle captured Fail. No winners",1,0xDDA0DD;
-	else if( .dfndr == $@BG_Team1 )
-	{
+	else if (.dfndr == $@BG_Team1) {
 		set .guill_score,3;
 		mapannounce .rush_castle$,"General Guillaume : Castle protected, we won the Battle!!",1,0x0000FF;
-	}
-	else
-	{
-		set .Croix_Score,3;
+	} else {
+		set .croix_score,3;
 		mapannounce .rush_castle$,"Prince Croix : Castle protected, we won the Battle!!",1,0xFF0000;
 	}
 	donpcevent "Rush::OnMatchEnd";
@@ -190,21 +178,21 @@ OnMatchEnd:
 	stopnpctimer;
 	stopnpctimer "Rush_Respawn";
 	killmonster .rush_castle$,"Rush::OnEmperium";
-	hBG_updatescore .rush_castle$,.guill_score,.Croix_Score;
+	hBG_updatescore .rush_castle$,.guill_score,.croix_score;
 	set $@Arena_Status, 2;
 	// =======================================================
 	// Team Rewards
 	// =======================================================
 	set .@Reward, 15 + (.guill_score * 2);
-	if( .guill_score > .Croix_Score )
+	if (.guill_score > .croix_score)
 		set .@Won,0;
 	else
 		set .@Won,2;
 
 	hBG_reward $@BG_Team1,7773,.@Reward,0,0,"BG_RUSH",1,7,.@Won;
 	// =======================================================
-	set .@Reward, 15 + (.Croix_Score * 2);
-	if( .Croix_Score > .guill_score )
+	set .@Reward, 15 + (.croix_score * 2);
+	if (.croix_score > .guill_score)
 		set .@Won,0;
 	else
 		set .@Won,2;
@@ -212,10 +200,10 @@ OnMatchEnd:
 	hBG_reward $@BG_Team2,7773,.@Reward,0,0,"BG_RUSH",1,7,.@Won;
 	// =======================================================
 	set .guill_score, 0;
-	set .Croix_Score, 0;
+	set .croix_score, 0;
 	sleep 5000;
 	donpcevent "BG_Queue_Handler::OnEndArena";
-	hBG_updatescore .rush_castle$,.guill_score,.Croix_Score;
+	hBG_updatescore .rush_castle$,.guill_score,.croix_score;
 	end;
 }
 
@@ -233,14 +221,12 @@ OnTimer25000:
 	set .@castle$,getvariableofnpc(.rush_castle$,"Rush");
 	set .@Defender,getvariableofnpc(.dfndr,"Rush");
 
-	switch( getvariableofnpc(.index,"Rush") )
-	{
+	switch( getvariableofnpc(.index,"Rush")) {
 	case 0: // rush_cas01 ========================================================================
 		areapercentheal .@castle$,198,224,207,233,100,100;
-		if( .@Defender == 0 )
+		if (.@Defender == 0)
 			areawarp .@castle$,198,224,207,233,.@castle$,43,229;
-		else if( $@BG_Team1 == .@Defender )
-		{
+		else if ($@BG_Team1 == .@Defender) {
 			areawarp .@castle$,198,229,207,233,.@castle$,71,36;
 			areawarp .@castle$,198,224,207,227,.@castle$,43,229;
 		}
@@ -252,10 +238,9 @@ OnTimer25000:
 		break;
 	case 1: // rush_cas02 ========================================================================
 		areapercentheal .@castle$,142,44,151,53,100,100;
-		if( .@Defender == 0 )
+		if (.@Defender == 0)
 			areawarp .@castle$,142,44,151,53,.@castle$,252,271;
-		else if( $@BG_Team1 == .@Defender )
-		{
+		else if ($@BG_Team1 == .@Defender) {
 			areawarp .@castle$,142,49,151,53,.@castle$,40,235;
 			areawarp .@castle$,142,44,151,47,.@castle$,252,271;
 		}
@@ -267,10 +252,9 @@ OnTimer25000:
 		break;
 	case 2: // rush_cas03 ========================================================================
 		areapercentheal .@castle$,56,6,69,17,100,100;
-		if( .@Defender == 0 )
+		if (.@Defender == 0)
 			areawarp .@castle$,56,6,69,17,.@castle$,216,103;
-		else if( $@BG_Team1 == .@Defender )
-		{
+		else if ($@BG_Team1 == .@Defender) {
 			areawarp .@castle$,56,6,61,17,.@castle$,31,190;
 			areawarp .@castle$,63,6,69,17,.@castle$,216,103;
 		}
@@ -282,10 +266,9 @@ OnTimer25000:
 		break;
 	case 3: // rush_cas04 ========================================================================
 		areapercentheal .@castle$,266,286,275,295,100,100;
-		if( .@Defender == 0 )
+		if (.@Defender == 0)
 			areawarp .@castle$,266,286,275,295,.@castle$,100,280;
-		else if( $@BG_Team1 == .@Defender )
-		{
+		else if ($@BG_Team1 == .@Defender) {
 			areawarp .@castle$,266,291,275,295,.@castle$,116,89;
 			areawarp .@castle$,266,286,275,289,.@castle$,100,280;
 		}

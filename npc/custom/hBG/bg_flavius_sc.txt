@@ -15,12 +15,11 @@ OnGuillaumeQuit:
 OnCroixQuit:
 	setquest 8506; // Deserter
 	set @killer_bg_src,0;
-	if( $@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_SC" )
+	if ($@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_SC")
 		donpcevent "BG_Queue_Handler::OnQueueJoinEvent";
 OnGuillaumeDie:
 OnCroixDie:
-	if( $@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_SC" && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Stone Carrier
+	if ($@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_SC" && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Stone Carrier
 		set .Stone[.@Stone],0;
 		getmapxy .@m$, .@x, .@y, 0;
 		movenpc "Neutral Stone#" + .@Stone, .@x, .@y;
@@ -37,19 +36,19 @@ OnBuildTeams:
 	end;
 
 OnReady:
-	if( getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" )
+	if (getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC")
 		end;
 
 	initnpctimer;
-	set .Guillaume_Score, 0;
-	set .Croix_Score, 0;
+	set .guillaume_score, 0;
+	set .croix_score, 0;
 	setarray .Stone[1],0,0,0,0,0,0;
 	setarray .x[1],177,222,222,177,200,199;
 	setarray .y[1],182,182,117,117,105,194;
-	for( set .@i, 1; .@i < 7; set .@i, .@i + 1 )
+	for( set .@i, 1; .@i < 7; set .@i, .@i + 1)
 		donpcevent "Neutral Stone#" + .@i + "::OnBGStart";
 
-	hBG_updatescore "bat_b04",.Guillaume_Score,.Croix_Score;
+	hBG_updatescore "bat_b04",.guillaume_score,.croix_score;
 	sleep 2000;
 	bg_warp $@BG_Team1,"bat_b04",328,150;
 	bg_warp $@BG_Team2,"bat_b04",62,150;
@@ -59,25 +58,25 @@ OnReady:
 	end;
 
 OnGuillaumeScore:
-	set .Guillaume_Score, .Guillaume_Score + 1;
+	set .guillaume_score, .guillaume_score + 1;
 	donpcevent "Flavius_SC::OnValidateScore";
 	end;
 
 OnCroixScore:
-	set .Croix_Score, .Croix_Score + 1;
+	set .croix_score, .croix_score + 1;
 	donpcevent "Flavius_SC::OnValidateScore";
 	end;
 
 OnValidateScore:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC")
 		end;
-	if( .Guillaume_Score > 99 )
-		set .Guillaume_Score,99;
-	if( .Croix_Score > 99 )
-		set .Croix_Score,99;
+	if (.guillaume_score > 99)
+		set .guillaume_score,99;
+	if (.croix_score > 99)
+		set .croix_score,99;
 
-	hBG_updatescore "bat_b04",.Guillaume_Score,.Croix_Score;
-	if( .Croix_Score >= 99 || .Guillaume_Score >= 99 )
+	hBG_updatescore "bat_b04",.guillaume_score,.croix_score;
+	if (.croix_score >= 99 || .guillaume_score >= 99)
 		donpcevent "Flavius_SC::OnMatchEnd";
 	end;
 
@@ -98,29 +97,23 @@ OnMatchEnd:
 	// =======================================================
 	// Team Rewards
 	// =======================================================
-	if( .Guillaume_Score > .Croix_Score )
-	{ // Guillaume Won
+	if (.guillaume_score > .croix_score) { // Guillaume Won
 		hBG_reward $@BG_Team1,7829,30,0,0,"BG_SC",1,5,0;
 		hBG_reward $@BG_Team2,7829,15,0,0,"BG_SC",1,5,2;
 		mapannounce "bat_b04","The Guillaume army has won the Battle of Flavius Stone Control!",1,0x0000FF;
-	}
-	else if( .Guillaume_Score < .Croix_Score )
-	{ // Croix Won
+	} else if (.guillaume_score < .croix_score) { // Croix Won
 		hBG_reward $@BG_Team1,7829,15,0,0,"BG_SC",1,5,2;
 		hBG_reward $@BG_Team2,7829,30,0,0,"BG_SC",1,5,0;
 		mapannounce "bat_b04","The Croix army has won the Battle of Flavius Stone Control!",1,0xFF0000;
-	}
-	else
-	{
+	} else {
 		hBG_reward $@BG_Team1,7829,15,0,0,"BG_SC",1,5,1;
 		hBG_reward $@BG_Team2,7829,15,0,0,"BG_SC",1,5,1;
 		mapannounce "bat_b04","The battle is over. This is a Tie...!",1,0x9ACD32;
 	}
 	// =======================================================
-	set .Guillaume_Score, 0;
-	set .Croix_Score, 0;
-	for( set .@i, 1; .@i < 7; set .@i, .@i + 1 )
-	{ // Stop Running Timers
+	set .guillaume_score, 0;
+	set .croix_score, 0;
+	for( set .@i, 1; .@i < 7; set .@i, .@i + 1) { // Stop Running Timers
 		stopnpctimer "Neutral Stone#" + .@i;
 		stopnpctimer "csp" + .@i; // Croix Stone Point
 		stopnpctimer "gsp" + .@i; // Guillaume Stone Point
@@ -129,8 +122,7 @@ OnMatchEnd:
 	setarray .Stone[1],0,0,0,0,0,0;
 	donpcevent "BG_Queue_Handler::OnEndArena";
 	hBG_updatescore "bat_b04",0,0;
-	for( set .@i, 1; .@i < 7; set .@i, .@i + 1 )
-	{ // Return Stones to Starting Position and Normalize Stone Points
+	for( set .@i, 1; .@i < 7; set .@i, .@i + 1) { // Return Stones to Starting Position and Normalize Stone Points
 		donpcevent "Neutral Stone#" + .@i + "::OnBGStop";
 		donpcevent "csp" + .@i + "::OnBGStop";
 		donpcevent "gsp" + .@i + "::OnBGStop";
@@ -138,12 +130,11 @@ OnMatchEnd:
 	end;
 
 OnFlash:
-	if( $@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_SC" && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{
+	if ($@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_SC" && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) {
 		getmapxy .@m$, .@x, .@y, 0;
-		if( getcharid(4) == $@BG_Team1 )
+		if (getcharid(4) == $@BG_Team1)
 			hBG_viewpointmap "bat_b04",1, .@x, .@y, .@Stone, 0x0000FF;
-		else if( getcharid(4) == $@BG_Team2 )
+		else if (getcharid(4) == $@BG_Team2)
 			hBG_viewpointmap "bat_b04",1, .@x, .@y, .@Stone, 0xFF0000;
 
 		specialeffect2 73;
@@ -158,9 +149,8 @@ OnFlash:
 // *********************************************************************
 
 function	script	SC_StoneCheck	{
-	for( set .@i, 1; .@i < 7; set .@i, .@i + 1 )
-	{
-		if( getvariableofnpc(.Stone[.@i],"Flavius_SC") == getarg(0) )
+	for( set .@i, 1; .@i < 7; set .@i, .@i + 1) {
+		if (getvariableofnpc(.Stone[.@i],"Flavius_SC") == getarg(0))
 			return .@i;
 	}
 	return 0;
@@ -173,12 +163,12 @@ bat_b04,177,182,0	script	Neutral Stone#1	BARRICADE,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 || getcharid(4) == 0 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 || getcharid(4) == 0)
 		end;
 	set .@Stone,atoi(strnpcinfo(2));
-	if( getvariableofnpc(.Stone[.@Stone],"Flavius_SC") != 0 )
+	if (getvariableofnpc(.Stone[.@Stone],"Flavius_SC") != 0)
 		end; // Already Captured
-	if( callfunc("SC_StoneCheck",getcharid(0)) != 0 )
+	if (callfunc("SC_StoneCheck",getcharid(0)) != 0)
 		end; // Already with a Stone
 
 	sc_end SC_HIDING;
@@ -227,10 +217,9 @@ bat_b04,85,159,0	script	Stone Point::csp1	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Guillaume Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Guillaume Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -248,12 +237,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -270,9 +257,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -281,7 +267,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -289,10 +275,9 @@ bat_b04,78,159,0	script	Stone Point::csp2	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Guillaume Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Guillaume Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -310,12 +295,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -332,9 +315,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -343,7 +325,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -351,10 +333,9 @@ bat_b04,71,159,0	script	Stone Point::csp3	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Guillaume Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Guillaume Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -372,12 +353,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -394,9 +373,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -405,7 +383,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -413,10 +391,9 @@ bat_b04,85,140,0	script	Stone Point::csp4	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Guillaume Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Guillaume Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -434,12 +411,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -456,9 +431,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -467,7 +441,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -475,10 +449,9 @@ bat_b04,78,140,0	script	Stone Point::csp5	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Guillaume Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Guillaume Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -496,12 +469,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -518,9 +489,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -529,7 +499,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -537,10 +507,9 @@ bat_b04,71,140,0	script	Stone Point::csp6	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Guillaume Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team1 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Guillaume Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -558,12 +527,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team2 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -580,9 +547,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0xFF0000;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnCroixScore";
 	}
 	end;
@@ -591,7 +557,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -602,10 +568,9 @@ bat_b04,312,159,0	script	Stone Point::gsp1	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Croix Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Croix Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -623,12 +588,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -645,9 +608,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -656,7 +618,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -664,10 +626,9 @@ bat_b04,319,159,0	script	Stone Point::gsp2	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Croix Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Croix Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -685,12 +646,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -707,9 +666,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -718,7 +676,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -726,10 +684,9 @@ bat_b04,326,159,0	script	Stone Point::gsp3	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Croix Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Croix Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -747,12 +704,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -769,9 +724,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -780,7 +734,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -788,10 +742,9 @@ bat_b04,312,140,0	script	Stone Point::gsp4	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Croix Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Croix Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -809,12 +762,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -831,9 +782,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -842,7 +792,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -850,10 +800,9 @@ bat_b04,319,140,0	script	Stone Point::gsp5	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Croix Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Croix Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -871,12 +820,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -893,9 +840,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -904,7 +850,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 
@@ -912,10 +858,9 @@ bat_b04,326,140,0	script	Stone Point::gsp6	GAJOMART,1,1,{
 	end;
 
 OnTouch:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1 )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_SC" || Hp < 1)
 		end;
-	if( .Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0 )
-	{ // Croix Stole
+	if (.Point != 0 && getcharid(4) == $@BG_Team2 && callfunc("SC_StoneCheck",getcharid(0)) == 0) { // Croix Stole
 		set getvariableofnpc(.Stone[.Point],"Flavius_SC"),getcharid(0);
 		setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 
@@ -933,12 +878,10 @@ OnTouch:
 		addtimer 2000, "Flavius_SC::OnFlash";
 		set .Point,0;
 		stopnpctimer;
-	}
-	else if( .Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0 )
-	{ // Check if user got a Stone
+	} else if (.Point == 0 && getcharid(4) == $@BG_Team1 && set(.@Stone,callfunc("SC_StoneCheck",getcharid(0))) > 0) { // Check if user got a Stone
 		initnpctimer;
 		set .Point,.@Stone;
-		set .count, 0;
+		set .Count, 0;
 		deltimer "Flavius_SC::OnFlash";
 
 		enable_items;
@@ -955,9 +898,8 @@ OnTimer2000:
 	getmapxy .@m$, .@x, .@y, 1;
 	hBG_viewpointmap "bat_b04",1, .@x, .@y, .Point, 0x0000FF;
 	specialeffect 223;
-	if( set(.count, .count + 1) >= 5 )
-	{
-		set .count, 0;
+	if (set(.Count, .Count + 1) >= 5) {
+		set .Count, 0;
 		donpcevent "Flavius_SC::OnGuillaumeScore";
 	}
 	end;
@@ -966,7 +908,7 @@ OnBGStop:
 	stopnpctimer;
 	setnpcdisplay strnpcinfo(3),"Stone Point",GAJOMART;
 	set .Point, 0;
-	set .count, 0;
+	set .Count, 0;
 	end;
 }
 

@@ -14,7 +14,7 @@
 OnGuillaumeQuit:
 OnCroixQuit:
 	setquest 8506; // Deserter
-	if( $@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Tierra_Boss" )
+	if ($@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Tierra_Boss")
 		donpcevent "BG_Queue_Handler::OnQueueJoinEvent";
 	end;
 
@@ -24,7 +24,7 @@ OnBuildTeams:
 	end;
 
 OnReady:
-	if( getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_Boss" )
+	if (getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_Boss")
 		end;
 
 	initnpctimer;
@@ -52,31 +52,26 @@ OnNeutralReset:
 	hBG_monster_immunity getvariableofnpc(.Boss,"Croix_Boss"),1;
 	bg_monster 0,"bat_a03",273,204,"Balance Flag",1911,"Tierra_Boss::OnNeutralBreak";
 	sleep 2000;
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_Boss" )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_Boss")
 		end;
 	mapannounce "bat_a03","-- Balance Flag returned to normality --",1,0x483D8B;
 	end;
 
 OnNeutralBreak:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_Boss" )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_Boss")
 		end;
 	set .Neutral_Base, getcharid(4);
-	if( getcharid(4) == $@BG_Team1 )
-	{
+	if (getcharid(4) == $@BG_Team1) {
 		mapannounce "bat_a03","-- Guillaume captured the Balance Flag. Croix guardian is now vulnerable to attacks!! --",1,0x0000FF;
 		hBG_monster_immunity getvariableofnpc(.Boss,"Guillaume_Boss"),1;
 		hBG_monster_immunity getvariableofnpc(.Boss,"Croix_Boss"),0;
 		bg_monster .Neutral_Base,"bat_a03",273,204,"Guillaume Flag",1912,"Tierra_Boss::OnNeutralBreak";
-	}
-	else if( getcharid(4) == $@BG_Team2 )
-	{
+	} else if (getcharid(4) == $@BG_Team2) {
 		mapannounce "bat_a03","-- Croix captured the Balance Flag. Guillaume guardian is now vulnerable to attacks!! --",1,0xFF0000;
 		hBG_monster_immunity getvariableofnpc(.Boss,"Guillaume_Boss"),0;
 		hBG_monster_immunity getvariableofnpc(.Boss,"Croix_Boss"),1;
 		bg_monster .Neutral_Base,"bat_a03",273,204,"Croix Flag",1913,"Tierra_Boss::OnNeutralBreak";
-	}
-	else
-	{
+	} else {
 		set .Neutral_Base, 0;
 		hBG_monster_immunity getvariableofnpc(.Boss,"Guillaume_Boss"),1;
 		hBG_monster_immunity getvariableofnpc(.Boss,"Croix_Boss"),1;
@@ -105,20 +100,15 @@ OnMatchEnd:
 	// =======================================================
 	// Team Rewards
 	// =======================================================
-	if( .guillaume_boss < .croix_boss )
-	{
+	if (.guillaume_boss < .croix_boss) {
 		hBG_reward $@BG_Team1,7828,15 + getvariableofnpc(.croix_boss, "Tierra_Boss"),0,0,"BG_Boss",1,1,0;
 		hBG_reward $@BG_Team2,7828,10 + getvariableofnpc(.guillaume_boss, "Tierra_Boss"),0,0,"BG_Boss",1,1,2;
 		mapannounce "bat_a03","The Guillaume army has won the Battle of Tierra Bossnia!",1,0x0000FF;
-	}
-	else if( .guillaume_boss > .croix_boss )
-	{
+	} else if (.guillaume_boss > .croix_boss) {
 		hBG_reward $@BG_Team1,7828,10 + getvariableofnpc(.croix_boss, "Tierra_Boss"),0,0,"BG_Boss",1,1,2;
 		hBG_reward $@BG_Team2,7828,15 + getvariableofnpc(.guillaume_boss, "Tierra_Boss"),0,0,"BG_Boss",1,1,0;
 		mapannounce "bat_a03","The Croix army has won the Battle of Tierra Bossnia!",1,0xFF0000;
-	}
-	else
-	{
+	} else {
 		hBG_reward $@BG_Team1,7828,10 + getvariableofnpc(.croix_boss, "Tierra_Boss"),0,0,"BG_Boss",1,1,1;
 		hBG_reward $@BG_Team2,7828,10 + getvariableofnpc(.guillaume_boss, "Tierra_Boss"),0,0,"BG_Boss",1,1,1;
 		mapannounce "bat_a03","The battle is over. This is a Tie...!",1,0x483D8B;
@@ -145,8 +135,7 @@ OnSummon:
 
 OnTimer2000:
 	stopnpctimer;
-	if( .Boss )
-	{
+	if (.Boss) {
 		hBG_monster_reveal .Boss,1,0x0000FF;
 		initnpctimer;
 	}
@@ -158,7 +147,7 @@ OnBoss:
 	set getvariableofnpc(.guillaume_boss, "Tierra_Boss"), getvariableofnpc(.guillaume_boss, "Tierra_Boss") + 1;
 	hBG_updatescore "bat_a03",getvariableofnpc(.croix_boss,"Tierra_Boss"),getvariableofnpc(.guillaume_boss,"Tierra_Boss");
 	set .Boss, 0;
-	if( getvariableofnpc(.guillaume_boss, "Tierra_Boss") > 4 )
+	if (getvariableofnpc(.guillaume_boss, "Tierra_Boss") > 4)
 		donpcevent "Tierra_Boss::OnMatchEnd";
 	else
 	{
@@ -181,8 +170,7 @@ OnSummon:
 
 OnTimer2000:
 	stopnpctimer;
-	if( .Boss )
-	{
+	if (.Boss) {
 		hBG_monster_reveal .Boss,1,0xFF0000;
 		initnpctimer;
 	}
@@ -194,7 +182,7 @@ OnBoss:
 	set getvariableofnpc(.croix_boss, "Tierra_Boss"), getvariableofnpc(.croix_boss, "Tierra_Boss") + 1;
 	hBG_updatescore "bat_a03",getvariableofnpc(.croix_boss,"Tierra_Boss"),getvariableofnpc(.guillaume_boss,"Tierra_Boss");
 	set .Boss, 0;
-	if( getvariableofnpc(.croix_boss, "Tierra_Boss") > 4 )
+	if (getvariableofnpc(.croix_boss, "Tierra_Boss") > 4)
 		donpcevent "Tierra_Boss::OnMatchEnd";
 	else
 	{
@@ -222,9 +210,9 @@ OnBGStop:
 OnTimer2000:
 	initnpctimer;
 	set .@NB, getvariableofnpc(.Neutral_Base,"Tierra_Boss");
-	if( .@NB == $@BG_Team1 )
+	if (.@NB == $@BG_Team1)
 		hBG_viewpointmap "bat_a03",1,273,204,1,0x0000FF;
-	else if( .@NB == $@BG_Team2 )
+	else if (.@NB == $@BG_Team2)
 		hBG_viewpointmap "bat_a03",1,273,204,1,0xFF0000;
 	else
 		hBG_viewpointmap "bat_a03",1,273,204,1,0xFFFFFF;

@@ -13,24 +13,22 @@
 
 OnGuillaumeQuit:
 	setquest 8506; // Deserter
-	if( $@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_TD" )
+	if ($@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_TD")
 		donpcevent "BG_Queue_Handler::OnQueueJoinEvent";
 OnGuillaumeDie:
-	if( $@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_TD" )
-	{
-		set .Guillaume_Score, .Guillaume_Score - 1;
+	if ($@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_TD") {
+		set .guillaume_score, .guillaume_score - 1;
 		donpcevent "Flavius_TD::OnValidateScore";
 	}
 	end;
 
 OnCroixQuit:
 	setquest 8506; // Deserter
-	if( $@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_TD" )
+	if ($@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_TD")
 		donpcevent "BG_Queue_Handler::OnQueueJoinEvent";
 OnCroixDie:
-	if( $@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_TD" )
-	{
-		set .Croix_Score, .Croix_Score - 1;
+	if ($@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_TD" ) {
+		set .croix_score, .croix_score - 1;
 		donpcevent "Flavius_TD::OnValidateScore";
 	}
 	end;
@@ -41,13 +39,13 @@ OnBuildTeams:
 	end;
 
 OnReady:
-	if( getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_TD" )
+	if (getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_TD")
 		end;
 
 	initnpctimer;
-	set .Guillaume_Score, 99;
-	set .Croix_Score, 99;
-	hBG_updatescore "bat_b03",.Guillaume_Score,.Croix_Score;
+	set .guillaume_score, 99;
+	set .croix_score, 99;
+	hBG_updatescore "bat_b03",.guillaume_score,.croix_score;
 	sleep 2000;
 	bg_warp $@BG_Team1,"bat_b03",328,150;
 	bg_warp $@BG_Team2,"bat_b03",62,150;
@@ -59,34 +57,27 @@ OnReady:
 	end;
 
 OnValidateScore:
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_TD" )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Flavius_TD")
 		end;
 
-	hBG_updatescore "bat_b03",.Guillaume_Score,.Croix_Score;
-	set .@Guillaume, hBG_get_data($@BG_Team1, 0);
-	set .@Croix, hBG_get_data($@BG_Team2, 0);
+	hBG_updatescore "bat_b03",.guillaume_score,.croix_score;
+	set .@guillaume, hBG_get_data($@BG_Team1, 0);
+	set .@croix, hBG_get_data($@BG_Team2, 0);
 
-	if( .Croix_Score <= 0 )
-	{ // Guillaume Won
+	if (.croix_score <= 0) { // Guillaume Won
 		hBG_reward $@BG_Team1,7829,30,0,0,"BG_TDM",1,4,0;
 		hBG_reward $@BG_Team2,7829,15,0,0,"BG_TDM",1,4,2;
 		mapannounce "bat_b03","The Guillaume army has won the Battle of Flavius TD!",1,0x0000FF;
-	}
-	else if( .Guillaume_Score <= 0 )
-	{ // Croix Won
+	) else if (.guillaume_score <= 0) { // Croix Won
 		hBG_reward $@BG_Team1,7829,15,0,0,"BG_TDM",1,4,2;
 		hBG_reward $@BG_Team2,7829,30,0,0,"BG_TDM",1,4,0;
 		mapannounce "bat_b03","The Croix army has won the Battle of Flavius TD!",1,0xFF0000;
-	}
-	else if( .@Croix == 0 )
-	{ // All Croix Players quit
-		set .@Rate, 99 - .Croix_Score;
+	) else if (.@croix == 0) { // All Croix Players quit
+		set .@Rate, 99 - .croix_score;
 		hBG_reward $@BG_Team1,7829,30 * .@Rate / 99,0,0,"BG_TDM",1,4,0;
 		mapannounce "bat_b03","The Guillaume army has won the Battle of Flavius TD!",1,0x0000FF;
-	}
-	else if( .@Guillaume == 0 )
-	{ // All Guillaume Players quit
-		set .@Rate, 99 - .Guillaume_Score;
+	) else if (.@guillaume == 0) { // All Guillaume Players quit
+		set .@Rate, 99 - .guillaume_score;
 		hBG_reward $@BG_Team2,7829,30 * .@Rate / 99,0,0,"BG_TDM",1,4,0;
 		mapannounce "bat_b03","The Croix army has won the Battle of Flavius TD!",1,0xFF0000;
 	}
@@ -103,20 +94,15 @@ OnTimer840000:
 	end;
 
 OnTimer900000:
-	if( .Guillaume_Score > .Croix_Score )
-	{ // Guillaume Won
+	if (.guillaume_score > .croix_score) { // Guillaume Won
 		hBG_reward $@BG_Team1,7829,30,0,0,"BG_TDM",1,4,0;
 		hBG_reward $@BG_Team2,7829,15,0,0,"BG_TDM",1,4,2;
 		mapannounce "bat_b03","The Guillaume army has won the Battle of Flavius TD!",1,0x0000FF;
-	}
-	else if( .Guillaume_Score < .Croix_Score )
-	{ // Croix Won
+	) else if (.guillaume_score < .croix_score) { // Croix Won
 		hBG_reward $@BG_Team1,7829,15,0,0,"BG_TDM",1,4,2;
 		hBG_reward $@BG_Team2,7829,30,0,0,"BG_TDM",1,4,0;
 		mapannounce "bat_b03","The Croix army has won the Battle of Flavius TD!",1,0xFF0000;
-	}
-	else
-	{
+	} else {
 		hBG_reward $@BG_Team1,7829,15,0,0,"BG_TDM",1,4,1;
 		hBG_reward $@BG_Team2,7829,15,0,0,"BG_TDM",1,4,1;
 		mapannounce "bat_b03","The battle is over. This is a Tie...!",1,0x808000;
@@ -129,8 +115,8 @@ OnMatchEnd:
 	donpcevent "#guitd_respawn::OnBGStop";
 	donpcevent "#crotd_respawn::OnBGStop";
 	set $@Arena_Status, 2;
-	set .Guillaume_Score, 99;
-	set .Croix_Score, 99;
+	set .guillaume_score, 99;
+	set .croix_score, 99;
 	sleep 5000;
 	donpcevent "BG_Queue_Handler::OnEndArena";
 	hBG_updatescore "bat_b03",99,99;

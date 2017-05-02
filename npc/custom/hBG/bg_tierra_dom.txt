@@ -16,17 +16,17 @@ OnBuildTeams:
 OnGuillaumeQuit:
 OnCroixQuit:
 	setquest 8506; // Deserter
-	if( $@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Tierra_DOM" )
+	if ($@Arena_Status != 0 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Tierra_DOM")
 		donpcevent "BG_Queue_Handler::OnQueueJoinEvent";
 	end;
 
 OnReady:
-	if( getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_DOM" )
+	if (getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_DOM")
 		end;
 
-	set .Guillaume_Score, 0;
-	set .Croix_Score, 0;
-	hBG_updatescore "bat_a04",.Guillaume_Score,.Croix_Score;
+	set .guillaume_score, 0;
+	set .croix_score, 0;
+	hBG_updatescore "bat_a04",.guillaume_score,.croix_score;
 	donpcevent "Dom_N_Base::OnBase";
 	donpcevent "Dom_S_Base::OnBase";
 	donpcevent "Dom_C_Base::OnBase";
@@ -39,50 +39,50 @@ OnReady:
 	end;
 
 OnNScore:
-	if( set(.@North, getvariableofnpc(.Owner,"Dom_N_Base")) == 0 )
+	if (set(.@North, getvariableofnpc(.Owner,"Dom_N_Base")) == 0)
 		end; // No Owner
 
-	if( .@North == 1 )
-		set .Guillaume_Score, .Guillaume_Score + 1;
+	if (.@North == 1)
+		set .guillaume_score, .guillaume_score + 1;
 	else
-		set .Croix_Score, .Croix_Score + 1;
+		set .croix_score, .croix_score + 1;
 
 	donpcevent "Tierra_DOM::OnMatchEnd";
 	end;
 
 OnSScore:
-	if( set(.@South, getvariableofnpc(.Owner,"Dom_S_Base")) == 0 )
+	if (set(.@South, getvariableofnpc(.Owner,"Dom_S_Base")) == 0)
 		end; // No Owner
 
-	if( .@South == 1 )
-		set .Guillaume_Score, .Guillaume_Score + 1;
+	if (.@South == 1)
+		set .guillaume_score, .guillaume_score + 1;
 	else
-		set .Croix_Score, .Croix_Score + 1;
+		set .croix_score, .croix_score + 1;
 
 	donpcevent "Tierra_DOM::OnMatchEnd";
 	end;
 
 OnCScore:
-	if( set(.@Center, getvariableofnpc(.Owner,"Dom_C_Base")) == 0 )
+	if (set(.@Center, getvariableofnpc(.Owner,"Dom_C_Base")) == 0)
 		end; // No Owner
 
-	if( .@Center == 1 )
-		set .Guillaume_Score, .Guillaume_Score + 1;
+	if (.@Center == 1)
+		set .guillaume_score, .guillaume_score + 1;
 	else
-		set .Croix_Score, .Croix_Score + 1;
+		set .croix_score, .croix_score + 1;
 
 	donpcevent "Tierra_DOM::OnMatchEnd";
 	end;
 
 OnMatchEnd:
-	if( .Guillaume_Score > 99 )
-		set .Guillaume_Score, 99;
-	if( .Croix_Score > 99 )
-		set .Croix_Score, 99;
+	if (.guillaume_score > 99)
+		set .guillaume_score, 99;
+	if (.croix_score > 99)
+		set .croix_score, 99;
 
-	hBG_updatescore "bat_a04",.Guillaume_Score,.Croix_Score; // Update Visual Score
+	hBG_updatescore "bat_a04",.guillaume_score,.croix_score; // Update Visual Score
 
-	if( .Guillaume_Score < 99 && .Croix_Score < 99 )
+	if (.guillaume_score < 99 && .croix_score < 99)
 		end; // No winners
 
 	stopnpctimer "Dom_N_Base";
@@ -94,27 +94,22 @@ OnMatchEnd:
 	// =======================================================
 	// Team Rewards
 	// =======================================================
-	if( .Guillaume_Score >= 99 && .Croix_Score >= 99 )
-	{ // Tie
+	if (.guillaume_score >= 99 && .croix_score >= 99) { // Tie
 		hBG_reward $@BG_Team1,7828,15,0,0,"BG_DOM",1,0,1;
 		hBG_reward $@BG_Team2,7828,15,0,0,"BG_DOM",1,0,1;
 		mapannounce "bat_a04","The battle is over. This is a Tie...!",1,0x4169E1;
-	}
-	else if( .Guillaume_Score >= 99 )
-	{ // Guillaume Won
+	} else if (.guillaume_score >= 99) { // Guillaume Won
 		hBG_reward $@BG_Team1,7828,30,0,0,"BG_DOM",1,0,0;
 		hBG_reward $@BG_Team2,7828,15,0,0,"BG_DOM",1,0,2;
 		mapannounce "bat_a04","The Guillaume army has won the Battle of Tierra Domination!",1,0xAAAAFF;
-	}
-	else if( .Croix_Score >= 99 )
-	{ // Croix Won
+	} else if (.croix_score >= 99) { // Croix Won
 		hBG_reward $@BG_Team1,7828,15,0,0,"BG_DOM",1,0,2;
 		hBG_reward $@BG_Team2,7828,30,0,0,"BG_DOM",1,0,0;
 		mapannounce "bat_a04","The Croix army has won the Battle of Tierra Domination!",1,0xAAAAFF;
 	}
 	// =======================================================
-	set .Guillaume_Score, 0;
-	set .Croix_Score, 0;
+	set .guillaume_score, 0;
+	set .croix_score, 0;
 	sleep 5000;
 	donpcevent "BG_Queue_Handler::OnEndArena";
 	hBG_updatescore "bat_a04",0,0;
@@ -143,23 +138,21 @@ OnBase:
 
 OnTimer1000:
 	stopnpctimer;
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_DOM" )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_DOM")
 		end;
 
 	set .@Guillaume, hBG_getareausers($@BG_Team1,"bat_a04",136,329,186,361);
 	set .@Croix, hBG_getareausers($@BG_Team2,"bat_a04",136,329,186,361);
 	set .Balance, .Balance + set(.@Balance, .@Guillaume - .@Croix);
 
-	if( .Balance < -50 )
+	if (.Balance < -50)
 		set .Balance, -50;
-	else if( .Balance > 50 )
+	else if (.Balance > 50)
 		set .Balance, 50;
 
-	switch( .Owner )
-	{
+	switch( .Owner) {
 	case 0:
-		if( .Balance == 50 )
-		{
+		if (.Balance == 50) {
 			set .Balance, 50;
 			set .Owner, 1; // Guillaume
 			setnpcdisplay "Dom_N_Base","Guillaume Base",1912;
@@ -167,8 +160,7 @@ OnTimer1000:
 //			bg_rankpoints_area $@BG_Team1,"bat_a04",136,329,186,361,"DOM_bases",1;
 			donpcevent "GDomNBW::OnEnable";
 		}
-		else if( .Balance == -50 )
-		{
+		else if (.Balance == -50) {
 			set .Balance, -50;
 			set .Owner, 2; // Croix
 			setnpcdisplay "Dom_N_Base","Croix Base",1913;
@@ -178,8 +170,7 @@ OnTimer1000:
 		}
 		break;
 	case 1:
-		if( .Balance <= 0 )
-		{ // Guillaume lost Control
+		if (.Balance <= 0) { // Guillaume lost Control
 			set .Owner, 0;
 			setnpcdisplay "Dom_N_Base","North Base",OBJ_NEUTRAL;
 			mapannounce "bat_a04","Guillaume Team lost control of the North Base",1,0xAAAAFF;
@@ -187,8 +178,7 @@ OnTimer1000:
 		}
 		break;
 	case 2:
-		if( .Balance >= 0 )
-		{ // Croix lost Control
+		if (.Balance >= 0) { // Croix lost Control
 			set .Owner, 0;
 			setnpcdisplay "Dom_N_Base","North Base",OBJ_NEUTRAL;
 			mapannounce "bat_a04","Croix Team lost control of the North Base",1,0xFFAAAA;
@@ -197,28 +187,26 @@ OnTimer1000:
 		break;
 	}
 
-	if( .@Balance > 0 )
+	if (.@Balance > 0)
 		specialeffect 236;
-	else if( .@Balance < 0 )
+	else if (.@Balance < 0)
 		specialeffect 225;
-	else if( .Owner == 1 )
+	else if (.Owner == 1)
 		specialeffect 236;
-	else if( .Owner == 2 )
+	else if (.Owner == 2)
 		specialeffect 225;
 	else
 		specialeffect 223;
 
-	switch( .Owner )
-	{
+	switch( .Owner) {
 	case 0: hBG_viewpointmap "bat_a04",1,173,345,1,0xFFFFFF; break;
 	case 1: hBG_viewpointmap "bat_a04",1,173,345,1,0xAAAAFF; break;
 	case 2: hBG_viewpointmap "bat_a04",1,173,345,1,0xFFAAAA; break;
 	}
 
-	if( .Owner == 0 )
+	if (.Owner == 0)
 		set .Tick, 0;
-	else if( set(.Tick, .Tick + 1) == 7 )
-	{
+	else if (set(.Tick, .Tick + 1) == 7) {
 		donpcevent "Tierra_DOM::OnNScore";
 		set .Tick, 0;
 	}
@@ -240,23 +228,21 @@ OnBase:
 
 OnTimer1000:
 	stopnpctimer;
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_DOM" )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_DOM")
 		end;
 
 	set .@Guillaume, hBG_getareausers($@BG_Team1,"bat_a04",260,194,287,213);
 	set .@Croix, hBG_getareausers($@BG_Team2,"bat_a04",260,194,287,213);
 	set .Balance, .Balance + set(.@Balance, .@Guillaume - .@Croix);
 
-	if( .Balance < -50 )
+	if (.Balance < -50)
 		set .Balance, -50;
-	else if( .Balance > 50 )
+	else if (.Balance > 50)
 		set .Balance, 50;
 
-	switch( .Owner )
-	{
+	switch( .Owner) {
 	case 0:
-		if( .Balance == 50 )
-		{
+		if (.Balance == 50) {
 			set .Balance, 50;
 			set .Owner, 1; // Guillaume
 			setnpcdisplay "Dom_C_Base","Guillaume Base",1912;
@@ -264,8 +250,7 @@ OnTimer1000:
 //			bg_rankpoints_area $@BG_Team1,"bat_a04",260,194,287,213,"DOM_bases",1;
 			donpcevent "GDomCBW::OnEnable";
 		}
-		else if( .Balance == -50 )
-		{
+		else if (.Balance == -50) {
 			set .Balance, -50;
 			set .Owner, 2; // Croix
 			setnpcdisplay "Dom_C_Base","Croix Base",1913;
@@ -275,8 +260,7 @@ OnTimer1000:
 		}
 		break;
 	case 1:
-		if( .Balance <= 0 )
-		{ // Guillaume lost Control
+		if (.Balance <= 0) { // Guillaume lost Control
 			set .Owner, 0;
 			setnpcdisplay "Dom_C_Base","Center Base",OBJ_NEUTRAL;
 			mapannounce "bat_a04","Guillaume Team lost control of the Center Base",1,0xAAAAFF;
@@ -284,8 +268,7 @@ OnTimer1000:
 		}
 		break;
 	case 2:
-		if( .Balance >= 0 )
-		{ // Croix lost Control
+		if (.Balance >= 0) { // Croix lost Control
 			set .Owner, 0;
 			setnpcdisplay "Dom_C_Base","Center Base",OBJ_NEUTRAL;
 			mapannounce "bat_a04","Croix Team lost control of the Center Base",1,0xFFAAAA;
@@ -294,28 +277,26 @@ OnTimer1000:
 		break;
 	}
 
-	if( .@Balance > 0 )
+	if (.@Balance > 0)
 		specialeffect 236;
-	else if( .@Balance < 0 )
+	else if (.@Balance < 0)
 		specialeffect 225;
-	else if( .Owner == 1 )
+	else if (.Owner == 1)
 		specialeffect 236;
-	else if( .Owner == 2 )
+	else if (.Owner == 2)
 		specialeffect 225;
 	else
 		specialeffect 223;
 
-	switch( .Owner )
-	{
+	switch( .Owner) {
 	case 0: hBG_viewpointmap "bat_a04",1,273,204,3,0xFFFFFF; break;
 	case 1: hBG_viewpointmap "bat_a04",1,273,204,3,0xAAAAFF; break;
 	case 2: hBG_viewpointmap "bat_a04",1,273,204,3,0xFFAAAA; break;
 	}
 
-	if( .Owner == 0 )
+	if (.Owner == 0)
 		set .Tick, 0;
-	else if( set(.Tick, .Tick + 1) == 7 )
-	{
+	else if (set(.Tick, .Tick + 1) == 7) {
 		donpcevent "Tierra_DOM::OnCScore";
 		set .Tick, 0;
 	}
@@ -337,23 +318,21 @@ OnBase:
 
 OnTimer1000:
 	stopnpctimer;
-	if( $@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_DOM" )
+	if ($@Arena_Status != 1 || getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") != "Tierra_DOM")
 		end;
 
 	set .@Guillaume, hBG_getareausers($@BG_Team1,"bat_a04",129,34,175,65);
 	set .@Croix, hBG_getareausers($@BG_Team2,"bat_a04",129,34,175,65);
 	set .Balance, .Balance + set(.@Balance, .@Guillaume - .@Croix);
 
-	if( .Balance < -50 )
+	if (.Balance < -50)
 		set .Balance, -50;
-	else if( .Balance > 50 )
+	else if (.Balance > 50)
 		set .Balance, 50;
 
-	switch( .Owner )
-	{
+	switch( .Owner) {
 	case 0:
-		if( .Balance == 50 )
-		{
+		if (.Balance == 50) {
 			set .Balance, 50;
 			set .Owner, 1; // Guillaume
 			setnpcdisplay "Dom_S_Base","Guillaume Base",1912;
@@ -361,8 +340,7 @@ OnTimer1000:
 //			bg_rankpoints_area $@BG_Team1,"bat_a04",129,34,175,65,"DOM_bases",1;
 			donpcevent "GDomSBW::OnEnable";
 		}
-		else if( .Balance == -50 )
-		{
+		else if (.Balance == -50) {
 			set .Balance, -50;
 			set .Owner, 2; // Croix
 			setnpcdisplay "Dom_S_Base","Croix Base",1913;
@@ -372,8 +350,7 @@ OnTimer1000:
 		}
 		break;
 	case 1:
-		if( .Balance <= 0 )
-		{ // Guillaume lost Control
+		if (.Balance <= 0) { // Guillaume lost Control
 			set .Owner, 0;
 			setnpcdisplay "Dom_S_Base","North Base",OBJ_NEUTRAL;
 			mapannounce "bat_a04","Guillaume Team lost control of the South Base",1,0xAAAAFF;
@@ -381,8 +358,7 @@ OnTimer1000:
 		}
 		break;
 	case 2:
-		if( .Balance >= 0 )
-		{ // Croix lost Control
+		if (.Balance >= 0) { // Croix lost Control
 			set .Owner, 0;
 			setnpcdisplay "Dom_S_Base","North Base",OBJ_NEUTRAL;
 			mapannounce "bat_a04","Croix Team lost control of the South Base",1,0xFFAAAA;
@@ -391,28 +367,26 @@ OnTimer1000:
 		break;
 	}
 
-	if( .@Balance > 0 )
+	if (.@Balance > 0)
 		specialeffect 236;
-	else if( .@Balance < 0 )
+	else if (.@Balance < 0)
 		specialeffect 225;
-	else if( .Owner == 1 )
+	else if (.Owner == 1)
 		specialeffect 236;
-	else if( .Owner == 2 )
+	else if (.Owner == 2)
 		specialeffect 225;
 	else
 		specialeffect 223;
 
-	switch( .Owner )
-	{
+	switch( .Owner) {
 	case 0: hBG_viewpointmap "bat_a04",1,164,50,2,0xFFFFFF; break;
 	case 1: hBG_viewpointmap "bat_a04",1,164,50,2,0xAAAAFF; break;
 	case 2: hBG_viewpointmap "bat_a04",1,164,50,2,0xFFAAAA; break;
 	}
 
-	if( .Owner == 0 )
+	if (.Owner == 0)
 		set .Tick, 0;
-	else if( set(.Tick, .Tick + 1) == 7 )
-	{
+	else if (set(.Tick, .Tick + 1) == 7) {
 		donpcevent "Tierra_DOM::OnSScore";
 		set .Tick, 0;
 	}
