@@ -61,8 +61,8 @@ OnValidateScore:
 		end;
 
 	hBG_updatescore "bat_b03",.guillaume_score,.croix_score;
-	set .@guillaume, hBG_get_data($@BG_Team1, 0);
-	set .@croix, hBG_get_data($@BG_Team2, 0);
+	.@guillaume, hBG_get_data($@BG_Team1, 0);
+	.@croix, hBG_get_data($@BG_Team2, 0);
 
 	if (.croix_score <= 0) { // Guillaume Won
 		hBG_reward $@BG_Team1,7829,30,0,0,"BG_TDM",1,4,0;
