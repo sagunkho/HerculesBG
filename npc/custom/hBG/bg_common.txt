@@ -103,6 +103,7 @@ OnInit:
 OnBGStartCommand:
 	setbattleflag .hBGEnabled$, 1;
 	message strcharinfo(0),"Battlegrounds have been enabled.";
+	donpcevent "BG_Queue_Handler::OnRotate";
 	callsub OnEndArena;
 OnBGStopCommand:
 	setbattleflag .hBGEnabled$, 0;
