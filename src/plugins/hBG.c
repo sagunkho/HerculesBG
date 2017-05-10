@@ -3113,7 +3113,8 @@ BUILDIN(hBG_monster_immunity)
 
 	if ((hBGmd = getFromMOBDATA(md, 0)) == NULL)
 		CREATE(hBGmd, struct hBG_mob_data, 1);
-
+	
+	addToMOBDATA(md, hBGmd, 0, true);
 	hBGmd->state.immunity = flag;
 
 	return true;
@@ -3871,6 +3872,22 @@ void battle_consume_ammo(struct map_session_data *sd, int skill_id, int lv)
 		if (sd->bg_id && map->list[sd->bl.m].flag.battleground)
 			add2limit(hBGsd->stats.ammo_used, qty, UINT_MAX);
 	}
+}
+// Check target immunity
+int battle_check_target_post( int retVal, struct block_list *src, struct block_list *target, int flag ) {
+
+	if ( retVal == 1 && target->type == BL_MOB ) {
+		struct hBG_mob_data *hBGmd;
+		if (( hBGmd = getFromMOBDATA( (TBL_MOB*)target, 0 ) ))
+		if ( hBGmd && hBGmd->state.immunity ){
+			hookStop();
+			return -1;
+		}
+
+        }
+
+        return retVal;
+
 }
 
 /**
