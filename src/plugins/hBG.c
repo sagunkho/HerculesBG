@@ -4413,6 +4413,8 @@ HPExport void plugin_init(void)
 		addHookPost(chrif, save, chrif_save_post);
 		addHookPost(status, damage, status_damage_post);
 		
+		addHookPost( battle,check_target, battle_check_target_post );
+		
 		/* @Commands */
 		addAtcommand("bgrank", bgrank);
 		addAtcommand("reportafk", reportafk);
