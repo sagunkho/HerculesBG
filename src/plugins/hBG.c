@@ -1441,7 +1441,8 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 		}
 	}
 
-	if (bgd && bgd->logout_event[0] && flag)
+/* This condition prevents to running Logout Event on logout, anyways leaving bg always calls this Event
+	if (bgd && bgd->logout_event[0] && flag) */
 		npc->event(sd, bgd->logout_event, 0);
 	
 	return bgd->count;
@@ -3841,11 +3842,20 @@ int unit_free_pre(struct block_list **bl, clr_type *clrtype)
 			&& (bgd = bg->team_search(sd->bg_id)) != NULL
 			&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
 			&& (hBGsd = getFromMSD(sd, 1)) != NULL) {
-			hBG_team_leave(sd, 0);
+			//hBG_team_leave(sd, 0); // Now launched in map_quit
 			hBGsd->stats.total_deserted++;
 		}
 	}
 
+	return 0;
+}
+/**
+ * Map Pre-Hooks
+ */
+int map_quit_pre(struct map_session_data **sd) {
+	nullpo_ret(*sd);
+	if( (*sd)->bg_id)
+		hBG_team_leave(*sd, 0);
 	return 0;
 }
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -4403,6 +4413,7 @@ HPExport void plugin_init(void)
 		addHookPre(skill, castend_nodamage_id, skill_castend_nodamage_id_pre);
 		addHookPre(bg, team_leave, bg_team_leave_pre);
 		addHookPre(unit, free, unit_free_pre);
+		addHookPre(map, quit, map_quit_pre);
 		
 		/* Function Post-Hooks */
 		addHookPost(clif, pLoadEndAck, clif_parse_LoadEndAck_post);
