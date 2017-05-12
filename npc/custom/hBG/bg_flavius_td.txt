@@ -61,22 +61,22 @@ OnValidateScore:
 		end;
 
 	hBG_updatescore "bat_b03",.guillaume_score,.croix_score;
-	set .@guillaume, hBG_get_data($@BG_Team1, 0);
-	set .@croix, hBG_get_data($@BG_Team2, 0);
+	.@guillaume, hBG_get_data($@BG_Team1, 0);
+	.@croix, hBG_get_data($@BG_Team2, 0);
 
 	if (.croix_score <= 0) { // Guillaume Won
 		hBG_reward $@BG_Team1,7829,30,0,0,"BG_TDM",1,4,0;
 		hBG_reward $@BG_Team2,7829,15,0,0,"BG_TDM",1,4,2;
 		mapannounce "bat_b03","The Guillaume army has won the Battle of Flavius TD!",1,0x0000FF;
-	) else if (.guillaume_score <= 0) { // Croix Won
+	} else if (.guillaume_score <= 0) { // Croix Won
 		hBG_reward $@BG_Team1,7829,15,0,0,"BG_TDM",1,4,2;
 		hBG_reward $@BG_Team2,7829,30,0,0,"BG_TDM",1,4,0;
 		mapannounce "bat_b03","The Croix army has won the Battle of Flavius TD!",1,0xFF0000;
-	) else if (.@croix == 0) { // All Croix Players quit
+	} else if (.@croix == 0) { // All Croix Players quit
 		set .@Rate, 99 - .croix_score;
 		hBG_reward $@BG_Team1,7829,30 * .@Rate / 99,0,0,"BG_TDM",1,4,0;
 		mapannounce "bat_b03","The Guillaume army has won the Battle of Flavius TD!",1,0x0000FF;
-	) else if (.@guillaume == 0) { // All Guillaume Players quit
+	} else if (.@guillaume == 0) { // All Guillaume Players quit
 		set .@Rate, 99 - .guillaume_score;
 		hBG_reward $@BG_Team2,7829,30 * .@Rate / 99,0,0,"BG_TDM",1,4,0;
 		mapannounce "bat_b03","The Croix army has won the Battle of Flavius TD!",1,0xFF0000;
@@ -98,7 +98,7 @@ OnTimer900000:
 		hBG_reward $@BG_Team1,7829,30,0,0,"BG_TDM",1,4,0;
 		hBG_reward $@BG_Team2,7829,15,0,0,"BG_TDM",1,4,2;
 		mapannounce "bat_b03","The Guillaume army has won the Battle of Flavius TD!",1,0x0000FF;
-	) else if (.guillaume_score < .croix_score) { // Croix Won
+	} else if (.guillaume_score < .croix_score) { // Croix Won
 		hBG_reward $@BG_Team1,7829,15,0,0,"BG_TDM",1,4,2;
 		hBG_reward $@BG_Team2,7829,30,0,0,"BG_TDM",1,4,0;
 		mapannounce "bat_b03","The Croix army has won the Battle of Flavius TD!",1,0xFF0000;
