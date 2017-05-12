@@ -2074,6 +2074,26 @@ void hBG_record_damage(struct block_list *src, struct block_list *target, int da
 	}
 }
 
+/**
+ * Warps a Team
+ * @see hBG_warp
+ */
+int hBG_team_warp(int bg_id, unsigned short mapindex, short x, short y)
+{ // Warps a Team
+	int i;
+	struct battleground_data *bgd = bg->team_search(bg_id);
+	if( bgd == NULL ) return false;
+	if( mapindex == 0 )
+	{
+		mapindex = bgd->mapindex;
+		x = bgd->x;
+		y = bgd->y;
+	}
+
+	for( i = 0; i < MAX_BG_MEMBERS; i++ )
+		if( bgd->members[i].sd != NULL ) pc->setpos(bgd->members[i].sd, mapindex, x, y, CLR_TELEPORT);
+	return true;
+}
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *                     @Commands
@@ -3562,6 +3582,29 @@ BUILDIN(hBG_flooritem2xy)
 
 	return true;
 }
+/**
+ * Warps BG Team to destination or Respawn Point
+ * @param BG Team
+ * @param Map Name
+ * @param Map X
+ * @param Map Y
+ */
+BUILDIN(hBG_warp)
+{
+	int x, y, mapindex, bg_id;
+	const char* map_name;
+
+	bg_id = script_getnum(st,2);
+	map_name = script_getstr(st,3);
+	if( !strcmp(map_name,"RespawnPoint") ) // Cementery Zone
+		mapindex = 0;
+	else if( (mapindex = script->mapindexname2id(st,map_name)) == 0 )
+		return 0; // Invalid Map
+	x = script_getnum(st,4);
+	y = script_getnum(st,5);
+	bg_id = hBG_team_warp(bg_id, mapindex, x, y);
+	return true;
+}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -4465,6 +4508,7 @@ HPExport void plugin_init(void)
 		addScriptCommand("hBG_getkafrapoints","ii", hBG_getkafrapoints);
 		addScriptCommand("hBG_reward","iiiiisiii", hBG_reward);
 		addScriptCommand("hBG_flooritem2xy", "siiii", hBG_flooritem2xy);
+		addScriptCommand("hBG_warp", "isii", hBG_warp);
 		
 		hBG_queue_db = idb_alloc(DB_OPT_RELEASE_DATA);
 		timer->add_func_list(hBG_send_xy_timer, "hBG_send_xy_timer");
