@@ -3111,10 +3111,10 @@ BUILDIN(hBG_monster_immunity)
 
 	md = (TBL_MOB *)mbl;
 
-	if ((hBGmd = getFromMOBDATA(md, 0)) == NULL)
-		CREATE(hBGmd, struct hBG_mob_data, 1);
-	
-	addToMOBDATA(md, hBGmd, 0, true);
+	if ((hBGmd = getFromMOBDATA(md, 0)) == NULL){
+		CREATE(hBGmd, struct hBG_mob_data, 1);	
+		addToMOBDATA(md, hBGmd, 0, true);
+	}
 	hBGmd->state.immunity = flag;
 
 	return true;
