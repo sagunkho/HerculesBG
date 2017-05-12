@@ -3132,9 +3132,10 @@ BUILDIN(hBG_monster_immunity)
 
 	md = (TBL_MOB *)mbl;
 
-	if ((hBGmd = getFromMOBDATA(md, 0)) == NULL)
-		CREATE(hBGmd, struct hBG_mob_data, 1);
-
+	if ((hBGmd = getFromMOBDATA(md, 0)) == NULL){
+		CREATE(hBGmd, struct hBG_mob_data, 1);	
+		addToMOBDATA(md, hBGmd, 0, true);
+	}
 	hBGmd->state.immunity = flag;
 
 	return true;
@@ -3925,6 +3926,22 @@ void battle_consume_ammo(struct map_session_data *sd, int skill_id, int lv)
 			add2limit(hBGsd->stats.ammo_used, qty, UINT_MAX);
 	}
 }
+// Check target immunity
+int battle_check_target_post( int retVal, struct block_list *src, struct block_list *target, int flag ) {
+
+	if ( retVal == 1 && target->type == BL_MOB ) {
+		struct hBG_mob_data *hBGmd;
+		if (( hBGmd = getFromMOBDATA( (TBL_MOB*)target, 0 ) ))
+		if ( hBGmd && hBGmd->state.immunity ){
+			hookStop();
+			return -1;
+		}
+
+        }
+
+        return retVal;
+
+}
 
 /**
  * Clif Post-Hooks
@@ -4449,6 +4466,8 @@ HPExport void plugin_init(void)
 		addHookPost(pc, authok, pc_authok_post);
 		addHookPost(chrif, save, chrif_save_post);
 		addHookPost(status, damage, status_damage_post);
+		
+		addHookPost( battle,check_target, battle_check_target_post );
 		
 		/* @Commands */
 		addAtcommand("bgrank", bgrank);
