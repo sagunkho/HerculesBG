@@ -113,13 +113,13 @@ OnEmperium:
 		if (.dfndr == $@BG_Team1) {
 			set .guill_score,1;
 			mapannounce .rush_castle$,"General Guillaume : Castle captured, now prepare to Defend it!!",1,0x0000FF;
-			bg_warp $@BG_Team2,"RespawnPoint",0,0; // To Cementery and Wait
+			hBG_warp $@BG_Team2,"RespawnPoint",0,0; // To Cementery and Wait
 		}
 		else
 		{
 			set .croix_score,1;
 			mapannounce .rush_castle$,"Prince Croix : Castle captured, now prepare to Defend it!!",1,0xFF0000;
-			bg_warp $@BG_Team1,"RespawnPoint",0,0; // To Cementery and Wait
+			hBG_warp $@BG_Team1,"RespawnPoint",0,0; // To Cementery and Wait
 		}
 
 		hBG_updatescore .rush_castle$,.guill_score,.croix_score;
