@@ -46,7 +46,7 @@ OnReady:
 	set .Top,0;
 	sleep 2000;
 	for( set .@i, 0; .@i < 10; set .@i, .@i + 1) {
-		hBGg_warp $@FFA_Team[.@i],"RespawnPoint",0,0;
+		hBG_warp $@FFA_Team[.@i],"RespawnPoint",0,0;
 	}
 	sleep 2000;
 	mapannounce "bat_c01","-- Free For All - Starting in 10 seconds --",1,0x483D8B;
