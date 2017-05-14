@@ -214,7 +214,7 @@ OnMatchEnd:
 	end;
 
 OnTimer24000:
-	mapannounce .rush_castle$,"-- Reinforcements entering the Battle of Rush --",1,0xDDA0DD;
+	mapannounce getvariableofnpc(.rush_castle$,"Rush"),"-- Reinforcements entering the Battle of Rush --",1,0xDDA0DD;
 	end;
 
 OnTimer25000:
