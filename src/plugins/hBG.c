@@ -1441,8 +1441,7 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 		}
 	}
 
-/* This condition prevents to running Logout Event on logout, anyways leaving bg always calls this Event
-	if (bgd && bgd->logout_event[0] && flag) */
+	if (bgd != NULL && strlen(bgd->logout_event[0]))
 		npc->event(sd, bgd->logout_event, 0);
 	
 	return bgd->count;
@@ -3885,7 +3884,6 @@ int unit_free_pre(struct block_list **bl, clr_type *clrtype)
 			&& (bgd = bg->team_search(sd->bg_id)) != NULL
 			&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
 			&& (hBGsd = getFromMSD(sd, 1)) != NULL) {
-			//hBG_team_leave(sd, 0); // Now launched in map_quit
 			hBGsd->stats.total_deserted++;
 		}
 	}
@@ -3895,10 +3893,13 @@ int unit_free_pre(struct block_list **bl, clr_type *clrtype)
 /**
  * Map Pre-Hooks
  */
-int map_quit_pre(struct map_session_data **sd) {
+int map_quit_pre(struct map_session_data **sd)
+{
 	nullpo_ret(*sd);
-	if( (*sd)->bg_id)
+
+	if ((*sd)->bg_id)
 		hBG_team_leave(*sd, 0);
+
 	return 0;
 }
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -3926,21 +3927,23 @@ void battle_consume_ammo(struct map_session_data *sd, int skill_id, int lv)
 			add2limit(hBGsd->stats.ammo_used, qty, UINT_MAX);
 	}
 }
+
 // Check target immunity
 int battle_check_target_post( int retVal, struct block_list *src, struct block_list *target, int flag ) {
 
 	if ( retVal == 1 && target->type == BL_MOB ) {
-		struct hBG_mob_data *hBGmd;
-		if (( hBGmd = getFromMOBDATA( (TBL_MOB*)target, 0 ) ))
-		if ( hBGmd && hBGmd->state.immunity ){
+		struct mob_data *md = BL_UCAST(BL_MOB, target);
+		struct hBG_mob_data *hBGmd = NULL;
+
+		if (md == NULL || (hBGmd = getFromMOBDATA(md, 0)) == NULL)
+			return retVal;
+
+		if (hBGmd != NULL && hBGmd->state.immunity) {
 			hookStop();
-			return -1;
+			return retVal;
 		}
 
-        }
-
         return retVal;
-
 }
 
 /**
