@@ -39,14 +39,19 @@ OnTraitorDie:
 		set .@id8965,countitem(8965);
 		set .@id8966,countitem(8966);
 		set .@id8967,countitem(8967);
-		// Remove Skulls
-		delitem 8965,.@id8965;
-		delitem 8966,.@id8966;
-		delitem 8967,.@id8967;
+		if (.@id8965 > 0)
+			delitem 8965,.@id8965;
+		if (.@id8966 > 0)
+			delitem 8966,.@id8966;
+		if (.@id8967 > 0)
+			delitem 8967,.@id8967;
 		// Drop Skulls
-		hBG_flooritem2xy "region_8",.@x,.@y,8965,.@id8965;
-		hBG_flooritem2xy "region_8",.@x,.@y,8966,.@id8966;
-		hBG_flooritem2xy "region_8",.@x,.@y,8967,.@id8967;
+		if (.@id8965 > 0)
+			hBG_flooritem2xy "region_8",.@x,.@y,8965,.@id8965;
+		if (.@id8966 > 0)
+			hBG_flooritem2xy "region_8",.@x,.@y,8966,.@id8966;
+		if (.@id8967 > 0)	
+			hBG_flooritem2xy "region_8",.@x,.@y,8967,.@id8967;
 		// Drop a New Skull
 		if (@killer_bg_id != .@Bid) {
 			if (.@Bid == $@BG_Team1)
