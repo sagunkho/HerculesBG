@@ -254,33 +254,6 @@ bat_a03,150,380,1	duplicate(Guillaume camp#bat)	Guillaume camp#tb_7	1_FLAG_LION
 bat_a03,118,357,1	duplicate(Guillaume camp#bat)	Guillaume camp#tb_8	1_FLAG_LION
 bat_a03,119,336,1	duplicate(Guillaume camp#bat)	Guillaume camp#tb_9	1_FLAG_LION
 
-// Battleground Therapist
-// *********************************************************************
-
-bat_a03,53,377,3	script	Therapist in battle#tb1	4_F_SISTER,{
-	mes "[Therapist in battle]";
-	mes "Just close your eyes, and take a deep breathe.";
-	mes "You can be free from pain.";
-	specialeffect2 312;
-	percentheal 100,100;
-	repairall;
-	close2;
-	openstorage;
-	end;
-}
-
-bat_a03,45,18,3	script	Therapist in battle#tb2	4_F_SISTER,{
-	mes "[Therapist in battle]";
-	mes "Just close your eyes, and take a deep breathe.";
-	mes "You can be free from pain.";
-	specialeffect2 312;
-	percentheal 100,100;
-	repairall;
-	close2;
-	openstorage;
-	end;
-}
-
 // Battleground Respawn
 // *********************************************************************
 
@@ -296,7 +269,7 @@ OnBGStop:
 	end;
 
 OnTimer24000:
-	misceffect 83;
+	specialeffect(EF_SANCTUARY);
 	end;
 
 OnTimer25000:
@@ -318,7 +291,7 @@ OnBGStop:
 	end;
 
 OnTimer24000:
-	misceffect 83;
+	specialeffect(EF_SANCTUARY);
 	end;
 
 OnTimer25000:
