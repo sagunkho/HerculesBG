@@ -145,8 +145,9 @@ bat_c01,50,131,5	script	Therapist in battle#fa1	4_F_SISTER,{
 	mes "[Therapist in battle]";
 	mes "Just close your eyes, and take a deep breathe.";
 	mes "You can be free from pain.";
-	specialeffect2 312;
-	percentheal 100,100;
+	specialeffect(EF_HEAL2, AREA, playerattached()); percentheal 100,100;
+//	specialeffect(EF_INCAGILITY, AREA, playerattached()); sc_start SC_INC_AGI,240000,10;
+//	specialeffect(EF_BLESSING, AREA, playerattached()); sc_start SC_BLESSING,240000,10;
 	repairall;
 	close2;
 	openstorage;
@@ -159,8 +160,9 @@ bat_c01,149,52,3	script	Therapist in battle#fa2	4_F_SISTER,{
 	mes "[Therapist in battle]";
 	mes "Just close your eyes, and take a deep breathe.";
 	mes "You can be free from pain.";
-	specialeffect2 312;
-	percentheal 100,100;
+	specialeffect(EF_HEAL2, AREA, playerattached()); percentheal 100,100;
+//	specialeffect(EF_INCAGILITY, AREA, playerattached()); sc_start SC_INC_AGI,240000,10;
+//	specialeffect(EF_BLESSING, AREA, playerattached()); sc_start SC_BLESSING,240000,10;
 	repairall;
 	close2;
 	openstorage;
@@ -182,7 +184,7 @@ OnBGStop:
 	end;
 
 OnTimer9000:
-	misceffect 83;
+	specialeffect(EF_SANCTUARY);
 	end;
 
 OnTimer10000:
@@ -204,7 +206,7 @@ OnBGStop:
 	end;
 
 OnTimer9000:
-	misceffect 83;
+	specialeffect(EF_SANCTUARY);
 	end;
 
 OnTimer10000:
