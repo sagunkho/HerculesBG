@@ -80,7 +80,7 @@ OnFlash:
 	if (getvariableofnpc(.Flag_Carrier,"Neutral_Flag") == getcharid(0) && $@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Tierra_EOS") {
 		getmapxy .@m$, .@x, .@y, 0;
 		hBG_viewpointmap "bat_a02",1,.@x,.@y,3,0xFFFF00;
-		specialeffect2 73;
+		specialeffect(EF_BOWLINGBASH);
 		emotion e_hlp,1;
 		addtimer 2000, "Tierra_EOS::OnFlash";
 		percentheal -1,-1;
