@@ -65,7 +65,8 @@ OnInit:
 	setarray .BG_Players_Max[0],        35,              35,             35,              35,           35,          50,            35,            35,           30;
 	// Battleground announcement colors.
 	setarray .BG_Color$[0],         "0x2F9F2D",      "0xAA00FF",      "0xFF0033",     "0x33FF99",   "0x3399FF",  "0xFFA500",    "0x9ACD32",    "0x4169E1",   "0xDDA0DD";
-
+	// Battleground @bgmode interger colors.
+	setarray .BG_Color2[0],         0x2F9F2D,      0xAA00FF,      0xFF0033,     0x33FF99,   0x3399FF,  0xFFA500,    0x9ACD32,    0x4169E1,   0xDDA0DD,  0x00FF00;
 	// Team Building Mode :
 	// 0 = Lineal [Keeps parties together]
 	// 1 = Random
@@ -81,6 +82,8 @@ OnInit:
 		/* Admin / GM Commands */
 		bindatcmd "bgstart","BG_Queue_Handler::OnBGStartCommand",99,99;
 		bindatcmd "bgstop","BG_Queue_Handler::OnBGStopCommand",99,99;
+		bindatcmd "bgmode","BG_Queue_Handler::OnBGModeCommand",99,99;
+		bindatcmd "bgsize","BG_Queue_Handler::OnBGSizeCommand",99,99;
 		/* Player Commands */
 		bindatcmd "joinbg","BG_Queue_Handler::OnDoJoin",0,99;
 		bindatcmd "leavebg","BG_Queue_Handler::OnDoLeave",0,99;
@@ -99,7 +102,52 @@ OnInit:
 	initnpctimer; // Initiate rotation timer.
 	.hBGEnabled$ = "battle_configuration/hBG_enabled";
 	end;
-
+	
+// @bgmode <1-10>
+OnBGModeCommand:
+	.@x = atoi(.@atcmd_parameters$[0]);
+	if (.@x <= .TotalArenas+1 && .@x > 0) {
+		if (.@x == 1)
+			set $BG_Index, rand(.TotalArenas)-1;
+		else
+			set $BG_Index, .@x-3;
+		message strcharinfo(0),"["+.BG_Names$[$BG_Index+1]+"] has been set.";
+		donpcevent "BG_Queue_Handler::OnRotate";
+		end;
+	} else {
+		message strcharinfo(0), "Usage: @bgmode <1-"+(.TotalArenas+1)+">";
+		dispbottom "#1 - Random",0xFFFFFF;
+		for (.@i = 0; .@i<.TotalArenas; .@i++)
+			dispbottom "#"+(.@i+2)+" - "+.BG_Names$[.@i],.BG_Color2[.@i];			
+		end;
+	}
+		
+// @bgsize <1-10> <min> <max>
+OnBGSizeCommand:
+	.@x = atoi(.@atcmd_parameters$[0]);
+	.@x2 = atoi(.@atcmd_parameters$[1]);
+	.@x3 = atoi(.@atcmd_parameters$[2]);
+	if (.@x2 == 0 || .@x3 == 0) {
+		message strcharinfo(0), "Usage: @bgsize <0-"+.TotalArenas+"> <min players> <max players>";
+		dispbottom "#0 - All Arenas",0xFFFFFF;
+		for (.@i = 0; .@i<.TotalArenas; .@i++)
+			dispbottom "#"+(.@i+1)+" - "+.BG_Names$[.@i],.BG_Color2[.@i];			
+		end;
+	} else if (.@x2 > .@x3) {
+		message strcharinfo(0), "@bgsize failed: min players is higher than max players. ";
+		end;
+	}	
+	if (.@x <= .TotalArenas && .@x > 0) {
+		message strcharinfo(0),"["+.BG_Names$[.@x-1]+"] min players is <"+.@x2+"> and max players is <"+.@x3+">.";
+		setarray .BG_Players_Min[.@x-1],.@x2;
+		setarray .BG_Players_Max[.@x-1],.@x3;
+	} else {
+		message strcharinfo(0),"[All Arenas] min players is <"+.@x2+"> and max players is <"+.@x3+">.";
+		setarray .BG_Players_Min[0],.@x2,.@x2,.@x2,.@x2,.@x2,.@x2,.@x2,.@x2,.@x2;
+		setarray .BG_Players_Max[0],.@x3,.@x3,.@x3,.@x3,.@x3,.@x3,.@x3,.@x3,.@x3;
+	}
+	end;
+		
 OnBGStartCommand:
 	setbattleflag .hBGEnabled$, 1;
 	message strcharinfo(0),"Battlegrounds have been enabled.";
@@ -132,6 +180,10 @@ OnDoJoin:
 // @leavebg
 OnDoLeave:
 	hBG_queue_leave .BG_Queue;
+	if (getmapflag(strcharinfo(3),mf_battleground)) {
+		hBG_leave;
+		warp "SavePoint", 0, 0;
+	}
 	end;
 
 // Triggers after an arena has ended.
@@ -619,10 +671,80 @@ bat_room,148,150,4	script	Teleporter#bat	4_F_TELEPORTER,{
 	end;
 }
 
-/**
- * Battleground Kafra Staff
- */
-bat_room,148,147,4	script	Kafra Staff::kaf_bat	4_F_KAFRA9,{
-	cutin "kafra_09", 2;
-	callfunc "F_Kafra", 0, 2, 1, 150, 0;
+// Battleground Therapist
+
+-	script	Therapist	4_F_SISTER,{
+	mes "[Therapist in battle]";
+	mes "Just close your eyes, and take a deep breathe.";
+	mes "You can be free from pain.";
+	specialeffect(EF_HEAL2, AREA, playerattached()); percentheal 100,100;
+//	specialeffect(EF_INCAGILITY, AREA, playerattached()); sc_start SC_INC_AGI,240000,10;
+//	specialeffect(EF_BLESSING, AREA, playerattached()); sc_start SC_BLESSING,240000,10;
+	repairall;
+	close2;
+	openstorage;
+	end;
 }
+
+// Battleground Therapist Duplicates
+// bg_conquest Therapist
+
+schg_cas06,260,383,5	duplicate(Therapist)	Therapist#cq1	4_F_SISTER
+schg_cas06,299,383,3	duplicate(Therapist)	Therapist#cq2	4_F_SISTER
+schg_cas07,86,315,5	duplicate(Therapist)	Therapist#cq3	4_F_SISTER
+schg_cas07,117,315,3	duplicate(Therapist)	Therapist#cq4	4_F_SISTER
+schg_cas08,23,50,6	duplicate(Therapist)	Therapist#cq5	4_F_SISTER
+schg_cas08,92,50,4	duplicate(Therapist)	Therapist#cq6	4_F_SISTER
+arug_cas06,26,385,5	duplicate(Therapist)	Therapist#cq7	4_F_SISTER
+arug_cas06,122,361,5	duplicate(Therapist)	Therapist#cq8	4_F_SISTER
+arug_cas07,304,342,3	duplicate(Therapist)	Therapist#cq9	4_F_SISTER
+arug_cas07,304,305,1	duplicate(Therapist)	Therapist#cq0	4_F_SISTER
+arug_cas08,310,154,6	duplicate(Therapist)	Therapist#cqa	4_F_SISTER
+arug_cas08,333,154,4	duplicate(Therapist)	Therapist#cqb	4_F_SISTER
+
+// bg_flavius_ctf Therapist
+
+bat_b02,390,13,5	duplicate(Therapist)	Therapist#ctf1	4_F_SISTER
+bat_b02,10,293,5	duplicate(Therapist)	Therapist#ctf2	4_F_SISTER
+
+// bg_flavius_sc Therapist
+
+bat_b04,390,13,5	duplicate(Therapist)	Therapist#sc1	4_F_SISTER
+bat_b04,10,293,5	duplicate(Therapist)	Therapist#sc2	4_F_SISTER
+
+// bg_flavius_td Therapist
+
+bat_b03,390,13,5	duplicate(Therapist)	Therapist#td1	4_F_SISTER
+bat_b03,10,293,5	duplicate(Therapist)	Therapist#td2	4_F_SISTER
+
+// bg_rush Therapist
+
+rush_cas01,198,230,6	duplicate(Therapist)	Therapist#rh1	4_F_SISTER
+rush_cas01,198,226,6	duplicate(Therapist)	Therapist#rh2	4_F_SISTER
+rush_cas02,142,50,6	duplicate(Therapist)	Therapist#rh3	4_F_SISTER
+rush_cas02,142,46,6	duplicate(Therapist)	Therapist#rh4	4_F_SISTER
+rush_cas03,60,17,4	duplicate(Therapist)	Therapist#rh5	4_F_SISTER
+rush_cas03,64,17,4	duplicate(Therapist)	Therapist#rh6	4_F_SISTER
+rush_cas04,266,292,6	duplicate(Therapist)	Therapist#rh7	4_F_SISTER
+rush_cas04,266,288,6	duplicate(Therapist)	Therapist#rh8	4_F_SISTER
+
+// bg_tierra_boss Therapist
+
+bat_a03,53,377,3	duplicate(Therapist)	Therapist#tb1	4_F_SISTER
+bat_a03,45,18,3	duplicate(Therapist)	Therapist#tb2	4_F_SISTER
+
+// bg_tierra_dom Therapist
+
+bat_a04,53,377,3	duplicate(Therapist)	Therapist#DOM1	4_F_SISTER
+bat_a04,45,18,3	duplicate(Therapist)	Therapist#DOM2	4_F_SISTER
+
+// bg_tierra_eoe Therapist
+
+bat_a02,53,377,3	duplicate(Therapist)	Therapist#eoe1	4_F_SISTER
+bat_a02,45,18,3	duplicate(Therapist)	Therapist#eoe2	4_F_SISTER
+
+// bg_tierra_ti Therapist
+
+region_8,7,52,5	duplicate(Therapist)	Therapist#ti_1	4_F_SISTER
+region_8,52,92,3	duplicate(Therapist)	Therapist#ti_2	4_F_SISTER
+region_8,92,52,3	duplicate(Therapist)	Therapist#ti_3	4_F_SISTER

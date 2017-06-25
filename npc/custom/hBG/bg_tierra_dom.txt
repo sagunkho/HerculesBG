@@ -395,33 +395,6 @@ OnTimer1000:
 	end;
 }
 
-// Battleground Therapist
-// *********************************************************************
-
-bat_a04,53,377,3	script	Therapist in battle#DOM2	4_F_SISTER,{
-	mes "[Therapist in battle]";
-	mes "Just close your eyes, and take a deep breathe.";
-	mes "You can be free from pain.";
-	specialeffect2 312;
-	percentheal 100,100;
-	repairall;
-	close2;
-	openstorage;
-	end;
-}
-
-bat_a04,45,18,3	script	Therapist in battle#DOM1	4_F_SISTER,{
-	mes "[Therapist in battle]";
-	mes "Just close your eyes, and take a deep breathe.";
-	mes "You can be free from pain.";
-	specialeffect2 312;
-	percentheal 100,100;
-	repairall;
-	close2;
-	openstorage;
-	end;
-}
-
 // Battleground Respawn
 // *********************************************************************
 
@@ -536,7 +509,7 @@ OnBGStop:
 	end;
 
 OnTimer24000:
-	misceffect 83;
+	specialeffect(EF_SANCTUARY);
 	end;
 
 OnTimer25000:
@@ -561,7 +534,7 @@ OnBGStop:
 	end;
 
 OnTimer24000:
-	misceffect 83;
+	specialeffect(EF_SANCTUARY);
 	end;
 
 OnTimer25000:

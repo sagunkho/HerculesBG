@@ -157,7 +157,7 @@ OnBlueFlash:
 	if (getvariableofnpc(.Flag_Carrier,"Guillaume_Flag") == getcharid(0) && $@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_CTF") {
 		getmapxy .@m$, .@x, .@y, 0;
 		hBG_viewpointmap "bat_b02",1, .@x, .@y, 1, 0x0000FF;
-		specialeffect2 73;
+		specialeffect(EF_BOWLINGBASH);
 		emotion e_hlp,1;
 		addtimer 2000, "Flavius_CTF::OnBlueFlash";
 		percentheal -5,-5;
@@ -168,7 +168,7 @@ OnRedFlash:
 	if (getvariableofnpc(.Flag_Carrier,"Croix_Flag") == getcharid(0) && $@Arena_Status == 1 && getvariableofnpc(.BG_Arena$,"BG_Queue_Handler") == "Flavius_CTF") {
 		getmapxy .@m$, .@x, .@y, 0;
 		hBG_viewpointmap "bat_b02",1, .@x, .@y, 2, 0xFF0000;
-		specialeffect2 73;
+		specialeffect(EF_BOWLINGBASH);
 		emotion e_hlp,1;
 		addtimer 2000, "Flavius_CTF::OnRedFlash";
 		percentheal -5,-5;
@@ -340,33 +340,6 @@ OnMatchEnd:
 	end;
 }
 
-// Battleground Therapist
-// *********************************************************************
-
-bat_b02,390,13,5	script	Therapist in battle#ctf1	4_F_SISTER,{
-	mes "[Therapist in battle]";
-	mes "Just close your eyes, and take a deep breathe.";
-	mes "You can be free from pain.";
-	specialeffect2 312;
-	percentheal 100,100;
-	repairall;
-	close2;
-	openstorage;
-	end;
-}
-
-bat_b02,10,293,5	script	Therapist in battle#ctf2	4_F_SISTER,{
-	mes "[Therapist in battle]";
-	mes "Just close your eyes, and take a deep breathe.";
-	mes "You can be free from pain.";
-	specialeffect2 312;
-	percentheal 100,100;
-	repairall;
-	close2;
-	openstorage;
-	end;
-}
-
 // Battleground Respawn
 // *********************************************************************
 
@@ -382,7 +355,7 @@ OnBGStop:
 	end;
 
 OnTimer24000:
-	misceffect 83;
+	specialeffect(EF_SANCTUARY);
 	end;
 
 OnTimer25000:
@@ -404,7 +377,7 @@ OnBGStop:
 	end;
 
 OnTimer24000:
-	misceffect 83;
+	specialeffect(EF_SANCTUARY);
 	end;
 
 OnTimer25000:
