@@ -1442,7 +1442,7 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 		}
 	}
 
-	if (bgd != NULL && strlen(bgd->logout_event[0]))
+	if (bgd != NULL && strlen(bgd->logout_event))
 		npc->event(sd, bgd->logout_event, 0);
 	
 	return bgd->count;
@@ -2078,20 +2078,26 @@ void hBG_record_damage(struct block_list *src, struct block_list *target, int da
  * Warps a Team
  * @see hBG_warp
  */
-int hBG_team_warp(int bg_id, unsigned short mapindex, short x, short y)
+int hBG_team_warp(int bg_id, unsigned short mapidx, short x, short y)
 { // Warps a Team
 	int i;
 	struct battleground_data *bgd = bg->team_search(bg_id);
-	if( bgd == NULL ) return false;
-	if( mapindex == 0 )
-	{
-		mapindex = bgd->mapindex;
+
+	if (bgd == NULL) {
+		ShowError("buildin_hBG_team_warp: Invalid teamId %d provided!", bg_id);
+		return false;
+	}
+
+	if (mapidx == 0) { // BG Cemetery (Spawn Point)
+		mapidx = bgd->mapindex;
 		x = bgd->x;
 		y = bgd->y;
 	}
 
-	for( i = 0; i < MAX_BG_MEMBERS; i++ )
-		if( bgd->members[i].sd != NULL ) pc->setpos(bgd->members[i].sd, mapindex, x, y, CLR_TELEPORT);
+	for (i = 0; i < bgd->count; i++)
+		if (bgd->members[i].sd != NULL)
+			pc->setpos(bgd->members[i].sd, mapidx, x, y, CLR_TELEPORT);
+
 	return true;
 }
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -2135,11 +2141,6 @@ ACMD(reportafk)
 	struct hBG_map_session_data *hBGsd = NULL;
 	struct hBG_map_session_data *hBGpl_sd = NULL;
 	struct battleground_data *bgd = NULL;
-	
-	if ((hBGsd = getFromMSD(sd, 1)) == NULL) {
-		clif->message(fd, "You are not in battlegrounds.");
-		return false;
-	}
 	
 	if ((bgd = bg->team_search(sd->bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
 		clif->message(fd, "This command is reserved for Battlegrounds Only.");
@@ -2185,14 +2186,9 @@ ACMD(leader)
 	struct hBG_map_session_data *hBGpl_sd = NULL;
 	struct battleground_data *bgd = NULL;
 	
-	if ((hBGsd = getFromMSD(sd, 1)) == NULL) {
-		clif->message(fd, "You are not in battlegrounds.");
-		return false;
-	}
-	
 	if ((bgd = bg->team_search(sd->bg_id)) == NULL || (hBGd = getFromBGDATA(bgd, 0)) == NULL)
 		clif->message(fd, "This command is reserved for Battlegrounds Only.");
-	if( sd->ud.skilltimer != INVALID_TIMER )
+	else if (sd->ud.skilltimer != INVALID_TIMER)
 		clif->message(fd, "Command not allow while casting a skill.");
 	else if (!(hBG_config_get("battle_configuration/hBG_leader_change")))
 		clif->message(fd, "This command is disabled.");
@@ -2209,10 +2205,10 @@ ACMD(leader)
 	else if (sd == pl_sd)
 		clif->message(fd, "You are already the Team Leader.");
 	else
-	{ // Everytest OK!
+	{ // Everything is fine... more or less.
 		char atcmd_output[256];
 		sprintf(atcmd_output, "Team Leader transfered to [%s]", pl_sd->status.name);
-		clif->broadcast2(&sd->bl, atcmd_output, (int)strlen(atcmd_output)+1, hBGd->color, 0x190, 20, 0, 0, BG);
+		clif->broadcast2(&sd->bl, atcmd_output, (int)strlen(atcmd_output) + 1, hBGd->color, 0x190, 20, 0, 0, BG);
 		hBGd->leader_char_id = pl_sd->status.char_id;
 		clif->charnameupdate(sd);
 		clif->charnameupdate(pl_sd);
@@ -2244,7 +2240,8 @@ BUILDIN(hBG_announce)
 	int         fontAlign = script_hasdata(st,6) ? script_getnum(st,6) : 0;     // default fontAlign
 	int         fontY     = script_hasdata(st,7) ? script_getnum(st,7) : 0;     // default fontY
 
-	clif->broadcast2(NULL, mes, (int)strlen(mes)+1, (unsigned int)strtol(fontColor, (char **)NULL, 0), fontType, fontSize, fontAlign, fontY, ALL_CLIENT);
+	clif->broadcast2(NULL, mes, (int)strlen(mes) + 1, (unsigned int)strtol(fontColor, (char **)NULL, 0), fontType, fontSize, fontAlign, fontY, ALL_CLIENT);
+
 	return true;
 }
 
@@ -3637,18 +3634,22 @@ BUILDIN(hBG_flooritem2xy)
  */
 BUILDIN(hBG_warp)
 {
-	int x, y, mapindex, bg_id;
-	const char* map_name;
+	int x, y, mapidx, bg_id;
+	const char *map_name;
 
 	bg_id = script_getnum(st,2);
 	map_name = script_getstr(st,3);
-	if( !strcmp(map_name,"RespawnPoint") ) // Cementery Zone
-		mapindex = 0;
-	else if( (mapindex = script->mapindexname2id(st,map_name)) == 0 )
+
+	if (!strcmp(map_name,"RespawnPoint")) // Cemetery Zone
+		mapidx = 0;
+	else if ((mapidx = script->mapindexname2id(st,map_name)) == 0)
 		return 0; // Invalid Map
+
 	x = script_getnum(st,4);
 	y = script_getnum(st,5);
-	bg_id = hBG_team_warp(bg_id, mapindex, x, y);
+
+	bg_id = hBG_team_warp(bg_id, mapidx, x, y);
+
 	return true;
 }
 
@@ -3939,41 +3940,30 @@ bool guild_isallied_pre(int *guild_id, int *guild_id2)
 }
 
 /**
- * Unit Pre-Hooks
- */
-int unit_free_pre(struct block_list **bl, clr_type *clrtype)
-{
-	nullpo_retr(0, (*bl));
-
-	if ((*bl)->type == BL_PC) {
-		struct map_session_data *sd = BL_UCAST(BL_PC, (*bl));
-		struct hBG_queue_data *hBGqd = NULL;
-		struct battleground_data *bgd = NULL;
-		struct hBG_data *hBGd = NULL;
-		struct hBG_map_session_data *hBGsd = NULL;
-
-		if ((hBGqd = getFromMSD(sd, 0)) && hBG_queue_member_search(hBGqd, sd->bl.id))
-			hBG_queue_member_remove(hBGqd, sd->bl.id);
-
-		if (sd->bg_id != 0
-			&& (bgd = bg->team_search(sd->bg_id)) != NULL
-			&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
-			&& (hBGsd = getFromMSD(sd, 1)) != NULL) {
-			hBGsd->stats.total_deserted++;
-		}
-	}
-
-	return 0;
-}
-/**
  * Map Pre-Hooks
  */
 int map_quit_pre(struct map_session_data **sd)
 {
+	struct hBG_queue_data *hBGqd = NULL;
+	struct battleground_data *bgd = NULL;
+	struct hBG_data *hBGd = NULL;
+	struct hBG_map_session_data *hBGsd = NULL;
+
 	nullpo_ret(*sd);
 
-	if ((*sd)->bg_id)
+	if ((hBGqd = getFromMSD((*sd), 0)) && hBG_queue_member_search(hBGqd, (*sd)->bl.id))
+		hBG_queue_member_remove(hBGqd, (*sd)->bl.id);
+
+	if ((*sd)->bg_id != 0
+		&& (bgd = bg->team_search((*sd)->bg_id)) != NULL
+		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
+		&& (hBGsd = getFromMSD((*sd), 1)) != NULL) {
+	}
+
+	if ((*sd)->bg_id) {
+		hBGsd->stats.total_deserted++;
 		hBG_team_leave(*sd, 0);
+	}
 
 	return 0;
 }
@@ -4004,9 +3994,9 @@ void battle_consume_ammo(struct map_session_data *sd, int skill_id, int lv)
 }
 
 // Check target immunity
-int battle_check_target_post( int retVal, struct block_list *src, struct block_list *target, int flag ) {
-
-	if ( retVal == 1 && target->type == BL_MOB ) {
+int battle_check_target_post(int retVal, struct block_list *src, struct block_list *target, int flag)
+{
+	if (retVal == 1 && target->type == BL_MOB) {
 		struct mob_data *md = BL_UCAST(BL_MOB, target);
 		struct hBG_mob_data *hBGmd = NULL;
 
@@ -4017,8 +4007,9 @@ int battle_check_target_post( int retVal, struct block_list *src, struct block_l
 			hookStop();
 			return retVal;
 		}
+	}
 
-        return retVal;
+	return retVal;
 }
 
 /**
@@ -4551,7 +4542,6 @@ HPExport void plugin_init(void)
 		addHookPre(skill, not_ok, skillnotok_pre);
 		addHookPre(skill, castend_nodamage_id, skill_castend_nodamage_id_pre);
 		addHookPre(bg, team_leave, bg_team_leave_pre);
-		addHookPre(unit, free, unit_free_pre);
 		addHookPre(map, quit, map_quit_pre);
 		
 		/* Function Post-Hooks */

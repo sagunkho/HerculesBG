@@ -203,7 +203,7 @@ OnEndArena:
 // Start Arena rotation.
 OnRotate:
 // Rotate every n seconds.
-OnTimer5000:
+OnTimer30000:
 	if (getbattleflag(.hBGEnabled$) == 0) end;
 	// Restart from index 0, if reached max.
 	$BG_Index = $BG_Index + 1;
