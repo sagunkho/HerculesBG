@@ -1380,9 +1380,6 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 	sd->bg_id = 0;
 	hBGsd->bg_kills = 0;
 	
-	// Remove Battleground member data
-	removeFromMSD(sd, 1);
-	
 	// Remove battleground items if any.
 	hBG_member_remove_bg_items(sd);
 
@@ -1442,7 +1439,7 @@ int hBG_team_leave(struct map_session_data *sd, int flag)
 		}
 	}
 
-	if (bgd != NULL && strlen(bgd->logout_event))
+	if (bgd && strlen(bgd->logout_event) && flag)
 		npc->event(sd, bgd->logout_event, 0);
 	
 	return bgd->count;
@@ -3940,33 +3937,36 @@ bool guild_isallied_pre(int *guild_id, int *guild_id2)
 }
 
 /**
- * Map Pre-Hooks
+ * Unit Pre-Hooks
  */
-int map_quit_pre(struct map_session_data **sd)
+int unit_free_pre(struct block_list **bl, clr_type *clrtype)
 {
-	struct hBG_queue_data *hBGqd = NULL;
-	struct battleground_data *bgd = NULL;
-	struct hBG_data *hBGd = NULL;
-	struct hBG_map_session_data *hBGsd = NULL;
+	nullpo_retr(0, (*bl));
 
-	nullpo_ret(*sd);
+	if ((*bl)->type == BL_PC) {
+		struct map_session_data *sd = BL_UCAST(BL_PC, (*bl));
+		struct hBG_queue_data *hBGqd = NULL;
+		struct battleground_data *bgd = NULL;
+		struct hBG_data *hBGd = NULL;
+		struct hBG_map_session_data *hBGsd = NULL;
 
-	if ((hBGqd = getFromMSD((*sd), 0)) && hBG_queue_member_search(hBGqd, (*sd)->bl.id))
-		hBG_queue_member_remove(hBGqd, (*sd)->bl.id);
+		if ((hBGqd = getFromMSD(sd, 0)) && hBG_queue_member_search(hBGqd, sd->bl.id))
+			hBG_queue_member_remove(hBGqd, sd->bl.id);
 
-	if ((*sd)->bg_id != 0
-		&& (bgd = bg->team_search((*sd)->bg_id)) != NULL
-		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
-		&& (hBGsd = getFromMSD((*sd), 1)) != NULL) {
-	}
+		if (sd->bg_id != 0
+			&& (bgd = bg->team_search(sd->bg_id)) != NULL
+			&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
+			&& (hBGsd = getFromMSD(sd, 1)) != NULL) {
+			hBG_team_leave(sd, 1);
+			hBGsd->stats.total_deserted++;
+		}
 
-	if ((*sd)->bg_id) {
-		hBGsd->stats.total_deserted++;
-		hBG_team_leave(*sd, 0);
+		removeFromMSD(sd, 1);
 	}
 
 	return 0;
 }
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  *                     Map Server Function Post-Hooks
@@ -4113,7 +4113,10 @@ bool chrif_save_post(bool ret, struct map_session_data *sd, int flag)
 	
 	if ((hBGsd = getFromMSD(sd, 1)) == NULL)
 		return ret;
-	
+
+	if (flag == 1) // Logout from BG! Do not save anything.
+		return ret;
+
 	WFIFOHEAD(chrif->fd, len);
 	WFIFOW(chrif->fd, 0) = PACKET_INTER_BG_STATS_SAVE; // 0x9000 Packet ID
 	WFIFOL(chrif->fd, 2) = sd->status.account_id; // Account Id
@@ -4204,7 +4207,6 @@ void char_bgstats_tosql(int fd)
 	
 	if ((stats = getFromSession(sockt->session[fd], 0)) == NULL) {
 		CREATE(stats, struct hBG_stats, 1);
-		memset(stats, 0, sizeof(struct hBG_stats));
 		addToSession(sockt->session[fd], stats, 0, true);
 	}
 	
@@ -4384,12 +4386,14 @@ void char_bgstats_fromsql(int fd)
 	
 	if ((stats = getFromSession(sockt->session[fd], 0)) == NULL) {
 		CREATE(stats, struct hBG_stats, 1);
-		memcpy(stats, &temp_stats, sizeof(sizeof(struct hBG_stats)));
+		memcpy(stats, &temp_stats, sizeof(struct hBG_stats));
 		addToSession(sockt->session[fd], stats, 0, true);
 	} else if (memcmp(stats, &temp_stats, sizeof(struct hBG_stats))) {
 		memcpy(stats, &temp_stats, sizeof(struct hBG_stats));
 	}
-	
+
+	SQL->StmtFree(stmt);
+
 	len = 14 + sizeof(struct hBG_stats);
 	WFIFOHEAD(fd, len);
 	WFIFOW(fd, 0) = PACKET_MAP_BG_STATS_GET;
@@ -4542,7 +4546,7 @@ HPExport void plugin_init(void)
 		addHookPre(skill, not_ok, skillnotok_pre);
 		addHookPre(skill, castend_nodamage_id, skill_castend_nodamage_id_pre);
 		addHookPre(bg, team_leave, bg_team_leave_pre);
-		addHookPre(map, quit, map_quit_pre);
+		addHookPre(unit, free, unit_free_pre);
 		
 		/* Function Post-Hooks */
 		addHookPost(clif, pLoadEndAck, clif_parse_LoadEndAck_post);
@@ -4554,7 +4558,7 @@ HPExport void plugin_init(void)
 		addHookPost(chrif, save, chrif_save_post);
 		addHookPost(status, damage, status_damage_post);
 		
-		addHookPost( battle,check_target, battle_check_target_post );
+		addHookPost(battle, check_target, battle_check_target_post);
 		
 		/* @Commands */
 		addAtcommand("bgrank", bgrank);
