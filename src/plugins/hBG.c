@@ -1645,7 +1645,7 @@ void hBG_team_rewards(int bg_id, int nameid, int amount, int kafrapoints, int qu
 			continue;
 
 		if (quest_id)
-			quest->add(sd, quest_id);
+			quest->add(sd, quest_id, 0);
 		
 		pc_setglobalreg(sd, script->add_str(var), pc_readglobalreg(sd,script->add_str(var)) + add_value);
 
@@ -3024,7 +3024,7 @@ BUILDIN(hBG_team_setquest)
 		if ((sd = bgd->members[i].sd) == NULL)
 			continue;
 
-		quest->add(sd,qid);
+		quest->add(sd, qid, 0);
 	}
 
 	script_pushint(st, 1);
