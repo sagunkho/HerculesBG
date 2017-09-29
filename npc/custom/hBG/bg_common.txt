@@ -172,6 +172,9 @@ OnDoJoin:
 	} else if (questprogress(8506,PLAYTIME) == 1) {
 		dispbottom "[You are a Deserter. You can't participate until the indicator goes off]";
 		end;
+	} else if ( gettimetick(2) < #BGDeserter ) {
+		dispbottom "[You are a Deserter. You can't participate until the indicator goes off]";
+		end;
 	}
 
 	hBG_queue_join .BG_Queue;
@@ -181,6 +184,14 @@ OnDoJoin:
 OnDoLeave:
 	hBG_queue_leave .BG_Queue;
 	if (getmapflag(strcharinfo(3),mf_battleground)) {
+		setquest 8506; // Deserter
+		hBG_leave;
+		warp "SavePoint", 0, 0;
+	}
+	end;
+OnPCLogoutEvent:
+	if (getmapflag(strcharinfo(3),mf_battleground)) {
+		#BGDeserter = gettimetick(2) + ( 1 * 60 ); // time is in seconds 60 = 60 seconds
 		hBG_leave;
 		warp "SavePoint", 0, 0;
 	}
