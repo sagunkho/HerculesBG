@@ -4018,6 +4018,11 @@ int battle_check_target_post(int retVal, struct block_list *src, struct block_li
 void clif_parse_LoadEndAck_post(int fd, struct map_session_data *sd)
 {
 	clif->charnameupdate(sd);
+	/* Display emblem on head of char [lucaslsb] */
+	if (hBG_enabled && sd->state.changemap && map->list[sd->bl.m].flag.battleground)
+		clif->map_type(sd, MAPTYPE_BATTLEFIELD);
+	if (hBG_enabled && map->list[sd->bl.m].flag.battleground)
+		clif->map_property(sd, MAPPROPERTY_AGITZONE);
 	return;
 }
 //Send charname_update every time you see someone in BG
@@ -4181,6 +4186,36 @@ void hBG_statistics_parsefromchar(int fd)
 		memcpy(&hBGsd->stats, RFIFOP(fd, 14), sizeof(struct hBG_stats));
 	else
 		memcpy(&hBGsd->stats, stats, sizeof(struct hBG_stats));
+}
+
+/**
+* Clif Interface Overloading [lucaslsb]
+*/
+struct s_packet_db packet_db[MAX_PACKET_DB + 1];
+void clif_sendbgemblem_area_overloading(struct map_session_data *sd)
+{
+	unsigned char buf[33];
+	nullpo_retv(sd);
+	if (hBG_enabled)
+		return; // Prevents display of conventional emblems
+	WBUFW(buf, 0) = 0x2dd;
+	WBUFL(buf, 2) = sd->bl.id;
+	safestrncpy((char*)WBUFP(buf, 6), sd->status.name, NAME_LENGTH); // name don't show in screen.
+	WBUFW(buf, 30) = sd->bg_id;
+	clif->send(buf, packet_len(0x2dd), &sd->bl, AREA);
+}
+
+void clif_sendbgemblem_single_overloading(int fd, struct map_session_data *sd)
+{
+	nullpo_retv(sd);
+	if (hBG_enabled)
+		return; // Prevents display of conventional emblems
+	WFIFOHEAD(fd, 32);
+	WFIFOW(fd, 0) = 0x2dd;
+	WFIFOL(fd, 2) = sd->bl.id;
+	safestrncpy(WFIFOP(fd, 6), sd->status.name, NAME_LENGTH);
+	WFIFOW(fd, 30) = sd->bg_id;
+	WFIFOSET(fd, packet_len(0x2dd));
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -4631,6 +4666,9 @@ HPExport void server_online(void)
 	if (SERVER_TYPE == SERVER_TYPE_MAP) {
 		hBG_build_guild_data();
 		ShowStatus("%s v%s has been initialized. [by Smokexyz]\n", pinfo.name, pinfo.version);
+		// clif interface overloading [lucaslsb]
+		clif->sendbgemblem_area = &clif_sendbgemblem_area_overloading;
+		clif->sendbgemblem_single = &clif_sendbgemblem_single_overloading;
 	}
 }
 
