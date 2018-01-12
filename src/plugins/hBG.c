@@ -217,11 +217,12 @@ struct hBG_queue_member
 struct hBG_stats
 {
 	unsigned int
+	best_damage,
+	boss_damage,
 	total_damage_done,
 	total_damage_received;
 	
 	unsigned short
-	best_damage,
 	// Triple Inferno
 	ti_wins,
 	ti_lost,
@@ -238,7 +239,6 @@ struct hBG_stats
 	boss_wins,
 	boss_lost,
 	boss_tie,
-	boss_damage,
 	// Tierra Domination
 	dom_bases,
 	dom_off_kills,
@@ -4191,31 +4191,34 @@ void hBG_statistics_parsefromchar(int fd)
 /**
 * Clif Interface Overloading [lucaslsb]
 */
-struct s_packet_db packet_db[MAX_PACKET_DB + 1];
 void clif_sendbgemblem_area_overloading(struct map_session_data *sd)
 {
+	int cmd = 0x2dd;
+	const struct s_packet_db *packet = clif->packet(cmd);
 	unsigned char buf[33];
 	nullpo_retv(sd);
 	if (hBG_enabled)
 		return; // Prevents display of conventional emblems
-	WBUFW(buf, 0) = 0x2dd;
+	WBUFW(buf, 0) = cmd;
 	WBUFL(buf, 2) = sd->bl.id;
 	safestrncpy((char*)WBUFP(buf, 6), sd->status.name, NAME_LENGTH); // name don't show in screen.
 	WBUFW(buf, 30) = sd->bg_id;
-	clif->send(buf, packet_len(0x2dd), &sd->bl, AREA);
+	clif->send(buf, packet->len, &sd->bl, AREA);
 }
 
 void clif_sendbgemblem_single_overloading(int fd, struct map_session_data *sd)
 {
+	int cmd = 0x2dd;
+	const struct s_packet_db *packet = clif->packet(cmd);
 	nullpo_retv(sd);
 	if (hBG_enabled)
 		return; // Prevents display of conventional emblems
 	WFIFOHEAD(fd, 32);
-	WFIFOW(fd, 0) = 0x2dd;
+	WFIFOW(fd, 0) = cmd;
 	WFIFOL(fd, 2) = sd->bl.id;
 	safestrncpy(WFIFOP(fd, 6), sd->status.name, NAME_LENGTH);
 	WFIFOW(fd, 30) = sd->bg_id;
-	WFIFOSET(fd, packet_len(0x2dd));
+	WFIFOSET(fd, packet->len);
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -4332,86 +4335,86 @@ void char_bgstats_fromsql(int fd)
 		"`healing_done`,`wrong_support_skills_used`,`wrong_healing_done`,`sp_used`,`zeny_used`,`spiritb_used`,`ammo_used`,`ranked_points`,`ranked_games`,`ru_wins`,"//60-69
 		"`ru_lost`,`ru_captures`,`dom_bases`,`dom_off_kills`,`dom_def_kills`,`dom_wins`,`dom_lost`,`dom_tie`"//70-79
 		" FROM `char_bg_stats` WHERE `char_id` = ?")
-		|| SQL_ERROR == SQL->StmtBindParam(stmt, 0, SQLDT_INT, &char_id, 0)
+		|| SQL_ERROR == SQL->StmtBindParam(stmt, 0, SQLDT_INT, &char_id, sizeof char_id)
 		|| SQL_ERROR == SQL->StmtExecute(stmt)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  0, SQLDT_UINT,   &temp_stats.best_damage, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  1, SQLDT_UINT,   &temp_stats.total_damage_done, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  2, SQLDT_UINT,   &temp_stats.total_damage_received, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  3, SQLDT_USHORT, &temp_stats.ru_skulls, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  4, SQLDT_USHORT, &temp_stats.ti_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  5, SQLDT_USHORT, &temp_stats.ti_lost, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  6, SQLDT_USHORT, &temp_stats.ti_tie, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  7, SQLDT_USHORT, &temp_stats.eos_flags, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  8, SQLDT_USHORT, &temp_stats.eos_bases, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt,  9, SQLDT_USHORT, &temp_stats.eos_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 10, SQLDT_USHORT, &temp_stats.eos_lost, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 11, SQLDT_USHORT, &temp_stats.eos_tie, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 12, SQLDT_USHORT, &temp_stats.boss_killed, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 13, SQLDT_UINT,   &temp_stats.boss_damage, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 14, SQLDT_USHORT, &temp_stats.boss_flags, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 15, SQLDT_USHORT, &temp_stats.boss_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 16, SQLDT_USHORT, &temp_stats.boss_lost, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 17, SQLDT_USHORT, &temp_stats.boss_tie, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 18, SQLDT_USHORT, &temp_stats.td_kills, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 19, SQLDT_USHORT, &temp_stats.td_deaths, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 20, SQLDT_USHORT, &temp_stats.td_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 21, SQLDT_USHORT, &temp_stats.td_lost, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 22, SQLDT_USHORT, &temp_stats.td_tie, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 23, SQLDT_USHORT, &temp_stats.sc_stolen, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 24, SQLDT_USHORT, &temp_stats.sc_captured, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 25, SQLDT_USHORT, &temp_stats.sc_dropped, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 26, SQLDT_USHORT, &temp_stats.sc_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 27, SQLDT_USHORT, &temp_stats.sc_lost, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 28, SQLDT_USHORT, &temp_stats.sc_tie, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 29, SQLDT_USHORT, &temp_stats.ctf_taken, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 30, SQLDT_USHORT, &temp_stats.ctf_captured, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 31, SQLDT_USHORT, &temp_stats.ctf_dropped, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 32, SQLDT_USHORT, &temp_stats.ctf_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 33, SQLDT_USHORT, &temp_stats.ctf_lost, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 34, SQLDT_USHORT, &temp_stats.ctf_tie, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 35, SQLDT_USHORT, &temp_stats.emperium_kills, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 36, SQLDT_USHORT, &temp_stats.barricade_kills, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 37, SQLDT_USHORT, &temp_stats.guardian_stone_kills, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 38, SQLDT_USHORT, &temp_stats.conquest_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 39, SQLDT_USHORT, &temp_stats.conquest_losses, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 40, SQLDT_USHORT, &temp_stats.kill_count, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 41, SQLDT_USHORT, &temp_stats.death_count, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 42, SQLDT_USHORT, &temp_stats.wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 43, SQLDT_USHORT, &temp_stats.losses, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 44, SQLDT_USHORT, &temp_stats.ties, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 45, SQLDT_USHORT, &temp_stats.wins_as_leader, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 46, SQLDT_USHORT, &temp_stats.losses_as_leader, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 47, SQLDT_USHORT, &temp_stats.ties_as_leader, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 48, SQLDT_USHORT, &temp_stats.total_deserted, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 49, SQLDT_USHORT, &temp_stats.score, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 50, SQLDT_USHORT, &temp_stats.points, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 51, SQLDT_UINT,   &temp_stats.sp_heal_potions, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 52, SQLDT_UINT,   &temp_stats.hp_heal_potions, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 53, SQLDT_UINT,   &temp_stats.yellow_gemstones, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 54, SQLDT_UINT,   &temp_stats.red_gemstones, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 55, SQLDT_UINT,   &temp_stats.blue_gemstones, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 56, SQLDT_UINT,   &temp_stats.poison_bottles, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 57, SQLDT_UINT,   &temp_stats.acid_demostration, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 58, SQLDT_UINT,   &temp_stats.acid_demostration_fail, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 59, SQLDT_UINT,   &temp_stats.support_skills_used, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 60, SQLDT_UINT,   &temp_stats.healing_done, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 61, SQLDT_UINT,   &temp_stats.wrong_support_skills_used, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 62, SQLDT_UINT,   &temp_stats.wrong_healing_done, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 63, SQLDT_UINT,   &temp_stats.sp_used, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 64, SQLDT_UINT,   &temp_stats.zeny_used, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 65, SQLDT_UINT,   &temp_stats.spiritb_used, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 66, SQLDT_UINT,   &temp_stats.ammo_used, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 67, SQLDT_USHORT, &temp_stats.ranked_points, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 68, SQLDT_USHORT, &temp_stats.ranked_games, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 69, SQLDT_USHORT, &temp_stats.ru_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 70, SQLDT_USHORT, &temp_stats.ru_lost, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 71, SQLDT_USHORT, &temp_stats.ru_captures, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 72, SQLDT_USHORT, &temp_stats.dom_bases, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 73, SQLDT_USHORT, &temp_stats.dom_off_kills, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 74, SQLDT_USHORT, &temp_stats.dom_def_kills, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 75, SQLDT_USHORT, &temp_stats.dom_wins, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 76, SQLDT_USHORT, &temp_stats.dom_lost, 0, NULL, NULL)
-		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 77, SQLDT_USHORT, &temp_stats.dom_tie, 0, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 0, SQLDT_UINT, &temp_stats.best_damage, sizeof temp_stats.best_damage, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 1, SQLDT_UINT, &temp_stats.total_damage_done, sizeof temp_stats.total_damage_done, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 2, SQLDT_UINT, &temp_stats.total_damage_received, sizeof temp_stats.total_damage_received, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 3, SQLDT_USHORT, &temp_stats.ru_skulls, sizeof temp_stats.ru_skulls, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 4, SQLDT_USHORT, &temp_stats.ti_wins, sizeof temp_stats.ti_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 5, SQLDT_USHORT, &temp_stats.ti_lost, sizeof temp_stats.ti_lost, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 6, SQLDT_USHORT, &temp_stats.ti_tie, sizeof temp_stats.ti_tie, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 7, SQLDT_USHORT, &temp_stats.eos_flags, sizeof temp_stats.eos_flags, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 8, SQLDT_USHORT, &temp_stats.eos_bases, sizeof temp_stats.eos_bases, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 9, SQLDT_USHORT, &temp_stats.eos_wins, sizeof temp_stats.eos_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 10, SQLDT_USHORT, &temp_stats.eos_lost, sizeof temp_stats.eos_lost, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 11, SQLDT_USHORT, &temp_stats.eos_tie, sizeof temp_stats.eos_tie, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 12, SQLDT_USHORT, &temp_stats.boss_killed, sizeof temp_stats.boss_killed, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 13, SQLDT_UINT, &temp_stats.boss_damage, sizeof temp_stats.boss_damage, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 14, SQLDT_USHORT, &temp_stats.boss_flags, sizeof temp_stats.boss_flags, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 15, SQLDT_USHORT, &temp_stats.boss_wins, sizeof temp_stats.boss_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 16, SQLDT_USHORT, &temp_stats.boss_lost, sizeof temp_stats.boss_lost, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 17, SQLDT_USHORT, &temp_stats.boss_tie, sizeof temp_stats.boss_tie, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 18, SQLDT_USHORT, &temp_stats.td_kills, sizeof temp_stats.td_kills, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 19, SQLDT_USHORT, &temp_stats.td_deaths, sizeof temp_stats.td_deaths, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 20, SQLDT_USHORT, &temp_stats.td_wins, sizeof temp_stats.td_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 21, SQLDT_USHORT, &temp_stats.td_lost, sizeof temp_stats.td_lost, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 22, SQLDT_USHORT, &temp_stats.td_tie, sizeof temp_stats.td_tie, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 23, SQLDT_USHORT, &temp_stats.sc_stolen, sizeof temp_stats.sc_stolen, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 24, SQLDT_USHORT, &temp_stats.sc_captured, sizeof temp_stats.sc_captured, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 25, SQLDT_USHORT, &temp_stats.sc_dropped, sizeof temp_stats.sc_dropped, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 26, SQLDT_USHORT, &temp_stats.sc_wins, sizeof temp_stats.sc_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 27, SQLDT_USHORT, &temp_stats.sc_lost, sizeof temp_stats.sc_lost, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 28, SQLDT_USHORT, &temp_stats.sc_tie, sizeof temp_stats.sc_tie, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 29, SQLDT_USHORT, &temp_stats.ctf_taken, sizeof temp_stats.ctf_taken, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 30, SQLDT_USHORT, &temp_stats.ctf_captured, sizeof temp_stats.ctf_captured, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 31, SQLDT_USHORT, &temp_stats.ctf_dropped, sizeof temp_stats.ctf_dropped, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 32, SQLDT_USHORT, &temp_stats.ctf_wins, sizeof temp_stats.ctf_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 33, SQLDT_USHORT, &temp_stats.ctf_lost, sizeof temp_stats.ctf_lost, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 34, SQLDT_USHORT, &temp_stats.ctf_tie, sizeof temp_stats.ctf_tie, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 35, SQLDT_USHORT, &temp_stats.emperium_kills, sizeof temp_stats.emperium_kills, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 36, SQLDT_USHORT, &temp_stats.barricade_kills, sizeof temp_stats.barricade_kills, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 37, SQLDT_USHORT, &temp_stats.guardian_stone_kills, sizeof temp_stats.guardian_stone_kills, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 38, SQLDT_USHORT, &temp_stats.conquest_wins, sizeof temp_stats.conquest_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 39, SQLDT_USHORT, &temp_stats.conquest_losses, sizeof temp_stats.conquest_losses, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 40, SQLDT_USHORT, &temp_stats.kill_count, sizeof temp_stats.kill_count, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 41, SQLDT_USHORT, &temp_stats.death_count, sizeof temp_stats.death_count, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 42, SQLDT_USHORT, &temp_stats.wins, sizeof temp_stats.wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 43, SQLDT_USHORT, &temp_stats.losses, sizeof temp_stats.losses, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 44, SQLDT_USHORT, &temp_stats.ties, sizeof temp_stats.ties, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 45, SQLDT_USHORT, &temp_stats.wins_as_leader, sizeof temp_stats.wins_as_leader, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 46, SQLDT_USHORT, &temp_stats.losses_as_leader, sizeof temp_stats.losses_as_leader, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 47, SQLDT_USHORT, &temp_stats.ties_as_leader, sizeof temp_stats.ties_as_leader, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 48, SQLDT_USHORT, &temp_stats.total_deserted, sizeof temp_stats.total_deserted, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 49, SQLDT_INT, &temp_stats.score, sizeof temp_stats.score, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 50, SQLDT_INT, &temp_stats.points, sizeof temp_stats.points, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 51, SQLDT_UINT, &temp_stats.sp_heal_potions, sizeof temp_stats.sp_heal_potions, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 52, SQLDT_UINT, &temp_stats.hp_heal_potions, sizeof temp_stats.hp_heal_potions, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 53, SQLDT_UINT, &temp_stats.yellow_gemstones, sizeof temp_stats.yellow_gemstones, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 54, SQLDT_UINT, &temp_stats.red_gemstones, sizeof temp_stats.red_gemstones, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 55, SQLDT_UINT, &temp_stats.blue_gemstones, sizeof temp_stats.blue_gemstones, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 56, SQLDT_UINT, &temp_stats.poison_bottles, sizeof temp_stats.poison_bottles, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 57, SQLDT_UINT, &temp_stats.acid_demostration, sizeof temp_stats.acid_demostration, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 58, SQLDT_UINT, &temp_stats.acid_demostration_fail, sizeof temp_stats.acid_demostration_fail, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 59, SQLDT_UINT, &temp_stats.support_skills_used, sizeof temp_stats.support_skills_used, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 60, SQLDT_UINT, &temp_stats.healing_done, sizeof temp_stats.healing_done, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 61, SQLDT_UINT, &temp_stats.wrong_support_skills_used, sizeof temp_stats.wrong_support_skills_used, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 62, SQLDT_UINT, &temp_stats.wrong_healing_done, sizeof temp_stats.wrong_healing_done, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 63, SQLDT_UINT, &temp_stats.sp_used, sizeof temp_stats.sp_used, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 64, SQLDT_UINT, &temp_stats.zeny_used, sizeof temp_stats.zeny_used, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 65, SQLDT_UINT, &temp_stats.spiritb_used, sizeof temp_stats.spiritb_used, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 66, SQLDT_UINT, &temp_stats.ammo_used, sizeof temp_stats.ammo_used, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 67, SQLDT_UINT, &temp_stats.ranked_points, sizeof temp_stats.ranked_points, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 68, SQLDT_USHORT, &temp_stats.ranked_games, sizeof temp_stats.ranked_games, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 69, SQLDT_USHORT, &temp_stats.ru_wins, sizeof temp_stats.ru_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 70, SQLDT_USHORT, &temp_stats.ru_lost, sizeof temp_stats.ru_lost, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 71, SQLDT_USHORT, &temp_stats.ru_captures, sizeof temp_stats.ru_captures, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 72, SQLDT_USHORT, &temp_stats.dom_bases, sizeof temp_stats.dom_bases, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 73, SQLDT_USHORT, &temp_stats.dom_off_kills, sizeof temp_stats.dom_off_kills, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 74, SQLDT_USHORT, &temp_stats.dom_def_kills, sizeof temp_stats.dom_def_kills, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 75, SQLDT_USHORT, &temp_stats.dom_wins, sizeof temp_stats.dom_wins, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 76, SQLDT_USHORT, &temp_stats.dom_lost, sizeof temp_stats.dom_lost, NULL, NULL)
+		|| SQL_ERROR == SQL->StmtBindColumn(stmt, 77, SQLDT_USHORT, &temp_stats.dom_tie, sizeof temp_stats.dom_tie, NULL, NULL)
 		|| SQL_SUCCESS != SQL->StmtNextRow(stmt))
 	{
 		temp_stats.score = 2000;
