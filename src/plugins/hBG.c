@@ -1348,104 +1348,6 @@ void hBG_member_remove_bg_items(struct map_session_data *sd)
 }
 
 /**
- * Remove a player from a team.
- * @param sd pointer to session data.
- * @param flag type of leave.
- * @return Amount of player in the BG or 0 on failure.
- */
-int hBG_team_leave(struct map_session_data *sd, int flag)
-{ // Single Player leaves team
-	int i;
-	struct battleground_data *bgd;
-	struct hBG_map_session_data *hBGsd;
-	struct hBG_data *hBGd;
-	struct map_session_data *pl_sd;
-	struct guild *g;
-
-	nullpo_ret(sd);
-	
-	if (!sd->bg_id)
-		return 0;
-	else if ((hBGsd = getFromMSD(sd, 1)) == NULL)
-		return 0;
-	else if ((bgd = bg->team_search(sd->bg_id)) == NULL)
-		return 0;
-	else if ((hBGd = getFromBGDATA(bgd, 0)) == NULL)
-		return 0;
-
-	// Packets
-	hBG_send_dot_remove(sd);
-	
-	// Reset information.
-	sd->bg_id = 0;
-	hBGsd->bg_kills = 0;
-	
-	// Remove battleground items if any.
-	hBG_member_remove_bg_items(sd);
-
-	// Remove Guild Skill Buffs
-	status_change_end(&sd->bl, SC_GUILDAURA, INVALID_TIMER);
-	status_change_end(&sd->bl, SC_GDSKILL_BATTLEORDER, INVALID_TIMER);
-	status_change_end(&sd->bl, SC_GDSKILL_REGENERATION, INVALID_TIMER);
-
-	// Refresh Guild Information
-	if (sd->status.guild_id && (g = guild->search(sd->status.guild_id)) != NULL) {
-		clif->guild_belonginfo(sd, g);
-		clif->guild_basicinfo(sd);
-		clif->guild_allianceinfo(sd);
-		clif->guild_memberlist(sd);
-		clif->guild_skillinfo(sd);
-		clif->guild_emblem(sd, g);
-	} else {
-		hBG_send_leave_single(sd, sd->status.name, "Leaving Battle...");
-	}
-
-	clif->charnameupdate(sd);
-	clif->guild_emblem_area(&sd->bl);
-
-	ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd == sd);
-
-	if (i < MAX_BG_MEMBERS) // Removes member from BG
-		memset(&bgd->members[i], 0, sizeof(struct battleground_member_data));
-	
-	ARR_FIND(0, MAX_BG_MEMBERS, i, hBGd->g->member[i].sd == sd);
-	
-	if (i < MAX_BG_MEMBERS) // removes member from BG Guild
-		memset(&hBGd->g->member[i].sd, 0, sizeof(hBGd->g->member[i].sd));
-	
-	if (hBGd->leader_char_id == sd->status.char_id)
-		hBGd->leader_char_id = 0;
-	
-	if (--bgd->count > 0) {
-		for (i = 0; i < MAX_BG_MEMBERS; i++) { // Update other BG members
-			if ((pl_sd = bgd->members[i].sd) == NULL)
-				continue;
-			
-			if (!hBGd->leader_char_id) { // Set new Leader first on the list
-				hBGd->leader_char_id = pl_sd->status.char_id;
-				clif->charnameupdate(pl_sd);
-			}
-			
-			switch (flag) {
-				case 3: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Status..."); break;
-				case 2: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Report..."); break;
-				case 1: hBG_send_expulsion(pl_sd, sd->status.name, "User has quit the game..."); break;
-				case 0: hBG_send_leave_single(pl_sd, sd->status.name, "Leaving Battle..."); break;
-			}
-			
-			hBG_guild_window_info(pl_sd);
-			hBG_send_emblem(pl_sd, hBGd->g);
-			hBG_send_guild_member_list(pl_sd);
-		}
-	}
-
-	if (bgd && strlen(bgd->logout_event) && flag)
-		npc->event(sd, bgd->logout_event, 0);
-	
-	return bgd->count;
-}
-
-/**
  * Get guild data of the Battleground
  * @param bg_id ID of the battleground
  * @return guild of the battleground or NULL.
@@ -1877,7 +1779,7 @@ int hBG_send_xy_timer_sub(union DBKey key, struct DBData *data, va_list ap)
 			sprintf(output, "[Battlegrounds] %s has been kicked for being AFK.", sd->status.name);
 			clif->broadcast2(&sd->bl, output, (int)strlen(output)+1, hBGd->color, 0x190, 20, 0, 0, BG);
 
-			hBG_team_leave(sd,3);
+			bg->team_leave(sd,3);
 
 			clif->message(sd->fd, "You have been kicked from the battleground because of your AFK status.");
 			pc->setpos(sd, sd->status.save_point.map, sd->status.save_point.x, sd->status.save_point.y, 3);
@@ -1947,7 +1849,7 @@ int hBG_addflooritem_area(struct block_list* bl, int16 m, int16 x, int16 y, int 
 			map->search_freecell(NULL, m, &mx, &my, range, range, 1);
 		}
 		
-		count += (map->addflooritem(bl, &item_tmp, 1, m, mx, my, 0, 0, 0, 4) != 0) ? 1 : 0;
+		count += (map->addflooritem(bl, &item_tmp, 1, m, mx, my, 0, 0, 0, 4, false) != 0) ? 1 : 0;
 	}
 	
 	return count;
@@ -2147,7 +2049,7 @@ ACMD(reportafk)
 		clif->message(fd, "Please, enter the character name (usage: @reportafk <name>).");
 	else if ((pl_sd = map->nick2sd(message)) == NULL)
 		clif->message(fd, msg_txt(3)); // Character not found.
-	else if ((hBGpl_sd = getFromMSD(pl_sd, 0)) == NULL)
+	else if ((hBGpl_sd = getFromMSD(pl_sd, 1)) == NULL)
 		clif->message(fd, "Destination Player is not in battlegrounds.");
 	else if (sd->bg_id != pl_sd->bg_id)
 		clif->message(fd, "Destination Player is not in your Team.");
@@ -2160,7 +2062,7 @@ ACMD(reportafk)
 		char atcmd_output[256];
 		
 		 // Kick the player and send a message.
-		hBG_team_leave(pl_sd, 2);
+		bg->team_leave(pl_sd, 2);
 		clif->message(pl_sd->fd, "You have been kicked from Battleground because of your AFK status.");
 		pc->setpos(pl_sd, pl_sd->status.save_point.map, pl_sd->status.save_point.x, pl_sd->status.save_point.y, 3);
 		// Message the source player and announce to team.
@@ -3193,7 +3095,7 @@ BUILDIN(hBG_leave)
 		return false;
 	}
 
-	hBG_team_leave(sd,0);
+	bg->team_leave(sd,0);
 
 	script_pushint(st, 1);
 
@@ -3904,23 +3806,6 @@ int status_get_emblem_id_pre(const struct block_list **bl)
 }
 
 /**
- * Battleground Pre-Hooks
- */
-int bg_team_leave_pre(struct map_session_data **sd, enum bg_team_leave_type *flag)
-{
-	struct hBG_data *hBGd;
-	struct battleground_data *bgd;
-	
-	nullpo_ret(sd);
-	
-	if ((bgd = bg->team_search((*sd)->bg_id)) != NULL
-		&& (hBGd = getFromBGDATA(bgd, 0)) != NULL)
-		hookStop();
-	
-	return 0;
-}
-
-/**
  * Guild Pre-Hooks
  */
 // Check if guild is null and don't run BCT checks if true.
@@ -3957,7 +3842,7 @@ int unit_free_pre(struct block_list **bl, clr_type *clrtype)
 			&& (bgd = bg->team_search(sd->bg_id)) != NULL
 			&& (hBGd = getFromBGDATA(bgd, 0)) != NULL
 			&& (hBGsd = getFromMSD(sd, 1)) != NULL) {
-			hBG_team_leave(sd, 1);
+			bg->team_leave(sd, 1);
 			hBGsd->stats.total_deserted++;
 		}
 
@@ -4189,9 +4074,111 @@ void hBG_statistics_parsefromchar(int fd)
 }
 
 /**
-* Clif Interface Overloading [lucaslsb]
+* Battleground Interface Overload [lucaslsb]
 */
-void clif_sendbgemblem_area_overloading(struct map_session_data *sd)
+
+/**
+ * Remove a player from a team.
+ * @param sd pointer to session data.
+ * @param flag type of leave.
+ * @return Amount of player in the BG or 0 on failure.
+ */
+int bg_team_leave_overload(struct map_session_data *sd, enum bg_team_leave_type flag)
+{ // Single Player leaves team
+	int i;
+	struct battleground_data *bgd;
+	struct hBG_map_session_data *hBGsd;
+	struct hBG_data *hBGd;
+	struct map_session_data *pl_sd;
+	struct guild *g;
+
+	nullpo_ret(sd);
+	
+	if (!sd->bg_id)
+		return 0;
+	else if ((hBGsd = getFromMSD(sd, 1)) == NULL)
+		return 0;
+	else if ((bgd = bg->team_search(sd->bg_id)) == NULL)
+		return 0;
+	else if ((hBGd = getFromBGDATA(bgd, 0)) == NULL)
+		return 0;
+
+	// Packets
+	hBG_send_dot_remove(sd);
+	
+	// Reset information.
+	sd->bg_id = 0;
+	hBGsd->bg_kills = 0;
+	
+	// Remove battleground items if any.
+	hBG_member_remove_bg_items(sd);
+
+	// Remove Guild Skill Buffs
+	status_change_end(&sd->bl, SC_GUILDAURA, INVALID_TIMER);
+	status_change_end(&sd->bl, SC_GDSKILL_BATTLEORDER, INVALID_TIMER);
+	status_change_end(&sd->bl, SC_GDSKILL_REGENERATION, INVALID_TIMER);
+
+	// Refresh Guild Information
+	if (sd->status.guild_id && (g = guild->search(sd->status.guild_id)) != NULL) {
+		clif->guild_belonginfo(sd, g);
+		clif->guild_basicinfo(sd);
+		clif->guild_allianceinfo(sd);
+		clif->guild_memberlist(sd);
+		clif->guild_skillinfo(sd);
+		clif->guild_emblem(sd, g);
+	} else {
+		hBG_send_leave_single(sd, sd->status.name, "Leaving Battle...");
+	}
+
+	clif->charnameupdate(sd);
+	clif->guild_emblem_area(&sd->bl);
+
+	ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd == sd);
+
+	if (i < MAX_BG_MEMBERS) // Removes member from BG
+		memset(&bgd->members[i], 0, sizeof(struct battleground_member_data));
+	
+	ARR_FIND(0, MAX_BG_MEMBERS, i, hBGd->g->member[i].sd == sd);
+	
+	if (i < MAX_BG_MEMBERS) // removes member from BG Guild
+		memset(&hBGd->g->member[i].sd, 0, sizeof(hBGd->g->member[i].sd));
+	
+	if (hBGd->leader_char_id == sd->status.char_id)
+		hBGd->leader_char_id = 0;
+	
+	if (--bgd->count > 0) {
+		for (i = 0; i < MAX_BG_MEMBERS; i++) { // Update other BG members
+			if ((pl_sd = bgd->members[i].sd) == NULL)
+				continue;
+			
+			if (!hBGd->leader_char_id) { // Set new Leader first on the list
+				hBGd->leader_char_id = pl_sd->status.char_id;
+				clif->charnameupdate(pl_sd);
+			}
+			
+			switch (flag) {
+				case 3: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Status..."); break;
+				case 2: hBG_send_expulsion(pl_sd, sd->status.name, "Kicked by AFK Report..."); break;
+				case 1: hBG_send_expulsion(pl_sd, sd->status.name, "User has quit the game..."); break;
+				case 0: hBG_send_leave_single(pl_sd, sd->status.name, "Leaving Battle..."); break;
+			}
+			
+			hBG_guild_window_info(pl_sd);
+			hBG_send_emblem(pl_sd, hBGd->g);
+			hBG_send_guild_member_list(pl_sd);
+		}
+	}
+
+	if (bgd && strlen(bgd->logout_event) && flag)
+		npc->event(sd, bgd->logout_event, 0);
+	
+	return bgd->count;
+}
+
+/**
+* Clif Interface Overload [lucaslsb]
+*/
+void clif_sendbgemblem_area_overload(struct map_session_data *sd)
 {
 	int cmd = 0x2dd;
 	const struct s_packet_db *packet = clif->packet(cmd);
@@ -4206,7 +4193,7 @@ void clif_sendbgemblem_area_overloading(struct map_session_data *sd)
 	clif->send(buf, packet->len, &sd->bl, AREA);
 }
 
-void clif_sendbgemblem_single_overloading(int fd, struct map_session_data *sd)
+void clif_sendbgemblem_single_overload(int fd, struct map_session_data *sd)
 {
 	int cmd = 0x2dd;
 	const struct s_packet_db *packet = clif->packet(cmd);
@@ -4583,7 +4570,6 @@ HPExport void plugin_init(void)
 		addHookPre(skill, check_condition_castbegin, skill_check_condition_castbegin_pre);
 		addHookPre(skill, not_ok, skillnotok_pre);
 		addHookPre(skill, castend_nodamage_id, skill_castend_nodamage_id_pre);
-		addHookPre(bg, team_leave, bg_team_leave_pre);
 		addHookPre(unit, free, unit_free_pre);
 		
 		/* Function Post-Hooks */
@@ -4670,8 +4656,9 @@ HPExport void server_online(void)
 		hBG_build_guild_data();
 		ShowStatus("%s v%s has been initialized. [by Smokexyz]\n", pinfo.name, pinfo.version);
 		// clif interface overloading [lucaslsb]
-		clif->sendbgemblem_area = &clif_sendbgemblem_area_overloading;
-		clif->sendbgemblem_single = &clif_sendbgemblem_single_overloading;
+		bg->team_leave = &bg_team_leave_overload;
+		clif->sendbgemblem_area = &clif_sendbgemblem_area_overload;
+		clif->sendbgemblem_single = &clif_sendbgemblem_single_overload;
 	}
 }
 
