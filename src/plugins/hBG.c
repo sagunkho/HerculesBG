@@ -2049,7 +2049,7 @@ ACMD(reportafk)
 		clif->message(fd, "Please, enter the character name (usage: @reportafk <name>).");
 	else if ((pl_sd = map->nick2sd(message)) == NULL)
 		clif->message(fd, msg_txt(3)); // Character not found.
-	else if ((hBGpl_sd = getFromMSD(pl_sd, 0)) == NULL)
+	else if ((hBGpl_sd = getFromMSD(pl_sd, 1)) == NULL)
 		clif->message(fd, "Destination Player is not in battlegrounds.");
 	else if (sd->bg_id != pl_sd->bg_id)
 		clif->message(fd, "Destination Player is not in your Team.");
